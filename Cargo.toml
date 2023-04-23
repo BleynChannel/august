@@ -1,0 +1,8 @@
+[workspace]
+members = [
+	"august_plugin_system"
+]
+exclude = [
+	"plugins/native_plugin",
+	"plugins/custom_plugin_manager",
+]

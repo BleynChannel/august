@@ -1,0 +1,1 @@
+{"rustc":9407668007973439367,"features":"","target":0,"profile":0,"path":0,"deps":[[14403899312948725614,"build_script_build",false,3653040552830648561]],"local":[{"RerunIfChanged":{"output":"debug\\build\\native_plugin-ea21b11d89d8c577\\output","paths":["plugin/*"]}}],"rustflags":[],"metadata":0,"config":0,"compile_kind":0}
