@@ -1,6 +1,0 @@
-[plugin]
-name = "native_plugin"
-description = ""
-version = "1.0.0"
-author = "Bleyn"
-license = "MIT"

@@ -1,1 +1,1 @@
-cargo:rerun-if-changed=plugin/*
+cargo:rerun-if-changed=plugin.testpl/*
