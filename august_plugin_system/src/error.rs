@@ -10,8 +10,8 @@ pub enum RegisterManagerError {
 
 #[derive(Error, Debug)]
 pub enum UnregisterManagerError {
-	#[error("Not found manager with format `{0}`")]
-	NotFound(String),
+	#[error("Not found manager")]
+	NotFound,
 	#[error("Manager unregistration error by the manager")]
     UnregisterManagerByManager(#[from] anyhow::Error),
 }
@@ -24,24 +24,18 @@ pub enum RegisterPluginError {
     UnpackError(String),
     #[error("Unknown plugin manager for the format '{0}'")]
     UnknownManagerFormat(String),
-    #[error("Does not contain config")]
-    DoesNotContainConfig,
-    #[error("Config reading error")]
-    ConfigReading(#[from] std::io::Error),
-    #[error("Config deserialization error")]
-    ConfigDeserialization(#[from] toml::de::Error),
-	#[error("A plugin with this name already exists")]
-	AlreadyExistsName(String),
     #[error("Plugin registration error by the manager")]
     RegisterPluginByManager(#[from] anyhow::Error),
+	#[error("A plugin with this ID already exists")]
+	AlreadyExistsID(String),
 }
 
 #[derive(Error, Debug)]
 pub enum UnregisterPluginError {
 	#[error("Not found plugin")]
 	NotFound,
-	#[error("Plugin is loaded")]
-	IsLoaded,
+	#[error("Plugin unload error")]
+	UnloadError(#[from] UnloadPluginError),
 	#[error("The plugin has an unregistered manager")]
 	HasUnregisteredManager,
 	#[error("Plugin unregistration error by the manager")]
@@ -54,6 +48,10 @@ pub enum LoadPluginError<'a> {
     NotFoundDependencies(&'a [String]),
     #[error("")]
     LoadDependency((String, &'a LoadPluginError<'a>)),
+}
+
+#[derive(Error, Debug)]
+pub enum UnloadPluginError {
     #[error("")]
-    UnknownManagerFormat(String),
+    NotFoundDependencies,
 }

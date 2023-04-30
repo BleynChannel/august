@@ -1,21 +1,35 @@
-mod config;
 mod error;
-
 pub use error::*;
 
-pub use config::Config;
-pub use config::Plugin as ConfigPlugin;
+use serde::{Deserialize, Serialize};
 
 use std::cell::{Ref, RefCell, RefMut};
-use std::fs;
+use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PluginInfo {
+    pub id: String,
+}
+
 pub struct Plugin {
-    manager: Option<Rc<RefCell<Box<dyn PluginManager>>>>,
+    manager: Rc<RefCell<Box<dyn PluginManager>>>,
     path: PathBuf,
-    config: Config,
+    info: PluginInfo,
     is_load: bool,
+}
+
+impl PartialEq for Plugin {
+    fn eq(&self, other: &Self) -> bool {
+        self.info.id == other.info.id
+    }
+}
+
+impl Debug for Plugin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Plugin").field("id", &self.info.id).finish()
+    }
 }
 
 impl Plugin {
@@ -23,12 +37,22 @@ impl Plugin {
         &self.path
     }
 
-    pub fn get_config(&self) -> &Config {
-        &self.config
+    pub fn get_info(&self) -> &PluginInfo {
+        &self.info
     }
 
     pub fn is_load(&self) -> bool {
         self.is_load
+    }
+
+    pub fn load(&mut self) -> Result<(), LoadPluginError> {
+        self.is_load = true;
+        Ok(())
+    }
+
+    pub fn unload(&mut self) -> Result<(), UnloadPluginError> {
+        self.is_load = false;
+        Ok(())
     }
 }
 
@@ -42,11 +66,19 @@ pub trait PluginManager {
         Ok(())
     }
 
-    fn register_plugin(&mut self, plugin: &Plugin) -> anyhow::Result<()> {
-        Ok(())
+    fn register_plugin(&mut self, path: &PathBuf) -> anyhow::Result<PluginInfo> {
+        Ok(PluginInfo { id: path.file_name().unwrap().to_str().unwrap().to_string() })
     }
     fn unregister_plugin(&mut self, plugin: &Plugin) -> anyhow::Result<()> {
         Ok(())
+    }
+
+    fn register_plugin_error(&mut self, info: &PluginInfo) {}
+}
+
+impl PartialEq for dyn PluginManager {
+    fn eq(&self, other: &Self) -> bool {
+        self.format() == other.format()
     }
 }
 
@@ -67,13 +99,13 @@ impl PluginLoader {
         let mut loader = Self::new();
 
         for manager in managers {
-            loader.register_plugin_manager(manager)?;
+            loader.register_manager(manager)?;
         }
 
         Ok(loader)
     }
 
-    pub fn register_plugin_manager(
+    pub fn register_manager(
         &mut self,
         manager: Box<dyn PluginManager>,
     ) -> Result<(), RegisterManagerError> {
@@ -93,55 +125,40 @@ impl PluginLoader {
         Ok(())
     }
 
-    pub fn register_plugin_managers(
+    pub fn register_managers(
         &mut self,
         managers: Vec<Box<dyn PluginManager>>,
     ) -> Result<(), RegisterManagerError> {
         for manager in managers {
-            self.register_plugin_manager(manager)?;
+            self.register_manager(manager)?;
         }
 
         Ok(())
     }
 
-    pub fn unregister_plugin_manager(
-        &mut self,
-        format: String,
-    ) -> Result<(), UnregisterManagerError> {
-        if let Some(manager) = self
-            .plugin_managers
-            .iter()
-            .find(|m| m.borrow().format() == format)
-        {
+    pub fn unregister_manager(&mut self, index: usize) -> Result<(), UnregisterManagerError> {
+        if let Some(manager) = self.plugin_managers.get(index) {
             manager.borrow_mut().unregister_manager()?;
+            self.plugin_managers.remove(index);
             Ok(())
         } else {
-            return Err(UnregisterManagerError::NotFound(format));
+            return Err(UnregisterManagerError::NotFound);
         }
     }
 
-    pub fn get_plugin_manager(&self, format: String) -> Option<Ref<'_, Box<dyn PluginManager>>> {
-        self.plugin_managers.iter().find_map(|m| {
-            if m.borrow().format() == format {
-                return Some(m.borrow());
-            }
-            None
-        })
+    pub fn get_manager(&self, index: usize) -> Option<Ref<'_, Box<dyn PluginManager>>> {
+        self.plugin_managers.get(index).map(|m| m.borrow())
     }
 
-    pub fn get_plugin_manager_mut(
-        &mut self,
-        format: String,
-    ) -> Option<RefMut<'_, Box<dyn PluginManager>>> {
-        self.plugin_managers.iter().find_map(|m| {
-            if m.borrow().format() == format {
-                return Some(m.borrow_mut());
-            }
-            None
-        })
+    pub fn get_manager_mut(&mut self, index: usize) -> Option<RefMut<'_, Box<dyn PluginManager>>> {
+        self.plugin_managers.get(index).map(|m| m.borrow_mut())
     }
 
-    pub fn register_plugin(&mut self, path: &str) -> Result<String, RegisterPluginError> {
+    pub fn get_managers(&self) -> Vec<Ref<'_, Box<dyn PluginManager>>> {
+        self.plugin_managers.iter().map(|m| m.borrow()).collect()
+    }
+
+    pub fn register_plugin(&mut self, path: &str) -> Result<usize, RegisterPluginError> {
         let path = Path::new(path).to_path_buf();
 
         if !path.exists() {
@@ -153,47 +170,31 @@ impl PluginLoader {
             ));
         }
 
-        // Получаю формат плагина и ищу подходящий менеджер
+        // Получаем формат плагина и ищем подходящий менеджер
         if let Some(plugin_format) = path.extension() {
             let plugin_format = plugin_format.to_str().unwrap();
             if let Some(manager) = self
                 .plugin_managers
                 .iter()
-                .find(|manager| manager.borrow().format() == plugin_format)
+                .find(|m| m.borrow().format() == plugin_format)
             {
-                // Получаю конфигурацию плагина
-                let config_path = path.join("config.toml");
-                if !config_path.exists() {
-                    return Err(RegisterPluginError::DoesNotContainConfig);
+                //Получаем нужную информацию про плагин
+                let info = manager.borrow_mut().register_plugin(&path)?;
+
+                if self.plugins.iter().find(|p| p.info.id == info.id).is_some() {
+					manager.borrow_mut().register_plugin_error(&info);
+                    return Err(RegisterPluginError::AlreadyExistsID(info.id.clone()));
                 }
 
-                let config_content = fs::read_to_string(config_path)?;
-                let config = toml::from_str::<Config>(&config_content)?;
-
-                if self
-                    .plugins
-                    .iter()
-                    .find(|p| p.config.plugin.name == config.plugin.name)
-                    .is_some()
-                {
-                    return Err(RegisterPluginError::AlreadyExistsName(
-                        config.plugin.name.clone(),
-                    ));
-                }
-
-                // Регистрирую плагин
+                // Регистрируем плагин
                 self.plugins.push(Plugin {
-                    manager: None,
+                    manager: manager.clone(),
                     path: path.clone(),
-                    config,
+                    info,
                     is_load: false,
                 });
-                let plugin = self.plugins.last_mut().unwrap();
 
-                manager.borrow_mut().register_plugin(plugin)?;
-                plugin.manager = Some(manager.clone());
-
-                return Ok(plugin.config.plugin.name.clone());
+                return Ok(self.plugins.len() - 1);
             } else {
                 return Err(RegisterPluginError::UnknownManagerFormat(
                     plugin_format.to_string(),
@@ -204,28 +205,16 @@ impl PluginLoader {
         }
     }
 
-    pub fn unregister_plugin(&mut self, plugin_name: &str) -> Result<(), UnregisterPluginError> {
-        if let Some(plugin) = self
-            .plugins
-            .iter_mut()
-            .find(|p| p.config.plugin.name == plugin_name)
-        {
+    pub fn unregister_plugin(&mut self, index: usize) -> Result<(), UnregisterPluginError> {
+        if let Some(plugin) = self.plugins.get_mut(index) {
             if plugin.is_load {
-                return Err(UnregisterPluginError::IsLoaded);
+                plugin.unload()?;
             }
 
-            let manager = plugin.manager.as_ref().unwrap();
-            if let Some(manager) = self
-                .plugin_managers
-                .iter()
-                .find(|m| m.borrow().format() == manager.borrow().format())
-            {
-                manager.borrow_mut().unregister_plugin(plugin)?;
-            } else {
-                return Err(UnregisterPluginError::HasUnregisteredManager);
-            }
+            let manager = plugin.manager.as_ref();
+            manager.borrow_mut().unregister_plugin(plugin)?;
 
-            self.plugins.retain(|p| p.config.plugin.name != plugin_name);
+            self.plugins.remove(index);
         } else {
             return Err(UnregisterPluginError::NotFound);
         }
@@ -233,26 +222,22 @@ impl PluginLoader {
         return Ok(());
     }
 
-    pub fn load_plugin(&mut self, plugin: &Plugin) -> Result<(), LoadPluginError> {
-        Err(LoadPluginError::UnknownManagerFormat("".to_string()))
+    // pub fn load_plugin(&mut self, plugin_name: &str) -> Result<(), LoadPluginError> {
+    //     Err(LoadPluginError::NotFoundDependencies(&[]))
+    // }
+
+    // pub fn load_plugin_now(
+    //     &mut self,
+    //     path: &str,
+    // ) -> Result<(), (Option<RegisterPluginError>, Option<LoadPluginError>)> {
+    //     Err((None, None))
+    // }
+
+    pub fn get_plugin(&self, index: usize) -> Option<&Plugin> {
+        self.plugins.get(index)
     }
 
-    pub fn load_plugin_now(
-        &mut self,
-        path: &str,
-    ) -> Result<(), (Option<RegisterPluginError>, Option<LoadPluginError>)> {
-        Err((None, None))
-    }
-
-    pub fn get_plugin(&self, name: &str) -> Option<&Plugin> {
-        self.plugins
-            .iter()
-            .find(|plugin| plugin.get_config().plugin.name == name)
-    }
-
-    pub fn get_plugin_mut(&mut self, name: &str) -> Option<&mut Plugin> {
-        self.plugins
-            .iter_mut()
-            .find(|plugin| plugin.get_config().plugin.name == name)
+    pub fn get_plugin_mut(&mut self, index: usize) -> Option<&mut Plugin> {
+        self.plugins.get_mut(index)
     }
 }

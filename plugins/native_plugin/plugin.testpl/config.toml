@@ -1,6 +1,8 @@
-[plugin]
-name = "native_plugin"
+id = "native_plugin"
+name = "Native Plugin"
 description = ""
 version = "1.0.0"
 author = "Bleyn"
 license = "MIT"
+# depends = [""]
+# optional_depends = [""]
