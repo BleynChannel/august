@@ -9,4 +9,6 @@ edition = "2021"
 anyhow = "1.0.70"
 serde = { version = "1.0.160", features = ["derive"] }
 thiserror = "1.0.40"
+
+[dev-dependencies]
 toml = "0.7.3"

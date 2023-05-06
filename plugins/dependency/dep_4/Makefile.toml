@@ -1,0 +1,49 @@
+[env]
+profile = "debug"
+targets = [ "${CARGO_MAKE_RUST_TARGET_OS}" ]
+
+__profile__ = { source = "${profile}", default_value = "debug", mapping = { debug = "debug", release = "release" } }
+
+[tasks.pack]
+dependencies = ["build"]
+script_runner = "@duckscript"
+script = '''
+targets = get_env targets
+name_project = get_env CARGO_MAKE_CRATE_NAME
+profile = get_env __profile__
+
+fn get_plugin_path
+	handle = glob_array ./plugin.*
+	for entry in ${handle}
+		if is_dir ${entry}
+			return ${entry}
+		end
+	end
+end
+
+fn pack_plugin
+	target_path = set "./target/${profile}"
+	package_path = set "${target_path}/${1}"
+
+	handle = split ${targets} ;
+	for target in ${handle}
+		if eq ${target} windows
+			cp "${target_path}/${name_project}.dll" "${package_path}/${target}/main.dll"
+		elseif eq ${target} linux
+			cp "${target_path}/lib${name_project}.so" "${package_path}/${target}/libmain.so"
+		elseif eq ${target} macos
+			cp "${target_path}/${name_project}.dylib" "${package_path}/${target}/main.dylib"
+		elseif eq ${target} android
+			echo TODO ANDROID
+		elseif eq ${target} ios
+			echo TODO IOS
+		end
+	end
+end
+
+plugin_path = get_plugin_path
+pack_plugin ${plugin_path}
+'''
+
+[tasks.default]
+alias = "pack"

@@ -5,4 +5,9 @@ members = [
 exclude = [
 	"plugins/native_plugin",
 	"plugins/custom_plugin_manager",
+
+	"plugins/dependency/dep_1",
+	"plugins/dependency/dep_2",
+	"plugins/dependency/dep_3",
+	"plugins/dependency/dep_4",
 ]

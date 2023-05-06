@@ -1,4 +1,4 @@
-mod test_manager;
+mod utils;
 
 #[cfg(test)]
 mod tests {
@@ -6,91 +6,110 @@ mod tests {
 
     use august_plugin_system::{PluginLoader, PluginManager};
 
-    use crate::test_manager::TestManagerPlugin;
+    use crate::utils::test_manager::TestManagerPlugin;
 
-    fn native_plugin_path() -> PathBuf {
+    fn get_plugin_path(name: &str, format: &str) -> PathBuf {
         std::env::current_dir()
             .unwrap()
-            .join("../plugins/native_plugin/target/debug/plugin.testpl")
+            .join(format!("../plugins/{name}/target/debug/plugin.{format}"))
+    }
+
+    fn loader_init() -> PluginLoader {
+        let mut plugin_managers: Vec<Box<dyn PluginManager>> = Vec::new();
+        plugin_managers.push(TestManagerPlugin::new());
+
+        match PluginLoader::init(plugin_managers) {
+            Ok(loader) => loader,
+            Err(e) => {
+                panic!("{:?}: {}", e, e.to_string())
+            }
+        }
     }
 
     #[test]
     fn get_plugin_manager() {
-        let mut plugin_managers: Vec<Box<dyn PluginManager>> = Vec::new();
-        plugin_managers.push(TestManagerPlugin::new());
+        let mut loader = loader_init();
 
-        match PluginLoader::init(plugin_managers) {
-            Ok(loader) => {
-                assert!(loader.get_manager(0).is_some());
-            }
-            Err(e) => {
-                println!("{:?}: {}", e, e.to_string());
-                assert!(false);
-            }
+        let is_manager = loader.get_manager(0).is_some();
+
+        if let Err(e) = loader.stop() {
+            panic!("{:?}: {}", e, e.to_string());
         }
+
+        assert!(is_manager);
     }
 
     #[test]
     fn register_plugin() {
-        let mut plugin_managers: Vec<Box<dyn PluginManager>> = Vec::new();
-        plugin_managers.push(TestManagerPlugin::new());
+        let mut loader = loader_init();
 
-        match PluginLoader::init(plugin_managers) {
-            Ok(mut loader) => {
-                match loader.register_plugin(native_plugin_path().to_str().unwrap()) {
-                    Ok(index) => {
-                        let plugin = loader.get_plugin(index).unwrap();
+        match loader.register_plugin(get_plugin_path("native_plugin", "testpl").to_str().unwrap()) {
+            Ok(plugin) => {
+                {
+                    let pl = plugin.borrow();
 
-                        println!(
-                            "Path = {:?}, ID = {}",
-                            plugin.get_path(),
-                            plugin.get_info().id,
-                        );
+                    println!("Path = {:?}, ID = {}", pl.get_path(), pl.get_info().id);
+                }
 
-                        if let Err(e) = loader.unregister_plugin(index) {
-                            println!("{:?}: {}", e, e.to_string());
-                            assert!(false);
-                        }
-                    }
-                    Err(e) => {
-                        println!("{:?}: {}", e, e.to_string());
-                        assert!(false);
-                    }
-                };
+                if let Err(e) = loader.unregister_plugin(&plugin) {
+                    panic!("{:?}: {}", e, e.to_string());
+                }
             }
             Err(e) => {
-                println!("{:?}: {}", e, e.to_string());
-                assert!(false);
+                panic!("{:?}: {}", e, e.to_string());
             }
-        }
+        };
 
-        assert!(true);
+        if let Err(e) = loader.stop() {
+            panic!("{:?}: {}", e, e.to_string());
+        }
     }
 
-    // #[test]
-    // fn load_plugin() {
-    //     let mut plugin_managers: Vec<Box<dyn PluginManager>> = Vec::new();
-    //     plugin_managers.push(TestManagerPlugin::new());
+    #[test]
+    fn load_plugin() {
+        let mut loader = loader_init();
 
-    //     match PluginLoader::init(plugin_managers) {
-    //         Ok(mut loader) => {
-    //             match loader.register_plugin(native_plugin_path().to_str().unwrap()) {
-    //                 Ok(index) => {
-    // 					if let Err(e) = loader.load_plugin(index) {
-    //                         println!("{:?}: {}", e, e.to_string());
-    //                         assert!(false);
-    //                     }
-    //                 }
-    //                 Err(e) => {
-    //                     println!("{:?}: {}", e, e.to_string());
-    //                     assert!(false);
-    //                 }
-    //             };
-    //         }
-    //         Err(e) => {
-    //             println!("{:?}: {}", e, e.to_string());
-    //             assert!(false);
-    //         }
-    //     }
-    // }
+        match loader.register_plugin(get_plugin_path("native_plugin", "testpl").to_str().unwrap()) {
+            Ok(plugin) => {
+                if let Err(e) = loader.load_plugin(&plugin) {
+                    panic!("{:?}: {}", e, e.to_string());
+                }
+
+                if let Err(e) = loader.unload_plugin(&plugin) {
+                    panic!("{:?}: {}", e, e.to_string());
+                }
+            }
+            Err(e) => {
+                panic!("{:?}: {}", e, e.to_string());
+            }
+        };
+
+        if let Err(e) = loader.stop() {
+            panic!("{:?}: {}", e, e.to_string());
+        }
+    }
+
+    #[test]
+    fn load_now_plugin() {
+        let mut loader = loader_init();
+
+        match loader.load_plugin_now(get_plugin_path("native_plugin", "testpl").to_str().unwrap()) {
+            Ok(plugin) => {
+                if let Err(e) = loader.load_plugin(&plugin) {
+                    panic!("{:?}: {}", e, e.to_string());
+                }
+            }
+            Err((Some(e), _)) => {
+                panic!("{:?}: {}", e, e.to_string());
+            }
+            Err((_, Some(e))) => {
+                panic!("{:?}: {}", e, e.to_string());
+            }
+            Err((_, _)) => {}
+        }
+
+        if let Err(e) = loader.stop() {
+            panic!("{:?}: {}", e, e.to_string());
+        }
+    }
 }

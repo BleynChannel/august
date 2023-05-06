@@ -1,5 +1,5 @@
-id = "native_plugin"
-name = "Native Plugin"
+id = "dep_1"
+name = "Depend 1"
 description = ""
 version = "1.0.0"
 author = "Bleyn"

@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use august_plugin_system::{Plugin, PluginInfo, PluginManager};
+use august_plugin_system::{Link, Plugin, PluginInfo, PluginManager};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -11,6 +11,8 @@ pub struct NativeConfig {
     pub version: String,
     pub author: String,
     pub license: Option<String>,
+    pub depends: Option<Vec<String>>,
+    pub optional_depends: Option<Vec<String>>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -53,6 +55,11 @@ impl PluginManager for TestManagerPlugin {
         //Заполняем информацию про плагин
         let info = PluginInfo {
             id: config.id.clone(),
+            depends: config.depends.clone().map_or(Vec::new(), |v| v.clone()),
+            optional_depends: config
+                .optional_depends
+                .clone()
+                .map_or(Vec::new(), |v| v.clone()),
         };
         self.configs.push(config);
 
@@ -60,10 +67,10 @@ impl PluginManager for TestManagerPlugin {
         Ok(info)
     }
 
-    fn unregister_plugin(&mut self, plugin: &Plugin) -> anyhow::Result<()> {
+    fn unregister_plugin(&mut self, plugin: &Link<Plugin>) -> anyhow::Result<()> {
         println!(
             "TestManagerPlugin::unregister_plugin - {:?}",
-            plugin.get_path()
+            plugin.borrow().get_path()
         );
         Ok(())
     }
@@ -79,6 +86,22 @@ impl PluginManager for TestManagerPlugin {
         }
 
         println!("TestManagerPlugin::register_plugin_error");
+    }
+
+    fn load_plugin(&mut self, plugin: &Link<Plugin>) -> anyhow::Result<()> {
+        println!(
+            "TestManagerPlugin::load_plugin - {:?}",
+            plugin.borrow().get_info().id
+        );
+        Ok(())
+    }
+
+    fn unload_plugin(&mut self, plugin: &Link<Plugin>) -> anyhow::Result<()> {
+        println!(
+            "TestManagerPlugin::unload_plugin - {:?}",
+            plugin.borrow().get_info().id
+        );
+        Ok(())
     }
 }
 
