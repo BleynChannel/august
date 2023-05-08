@@ -4,40 +4,20 @@ mod utils;
 mod dependency {
     use std::path::PathBuf;
 
-    use august_plugin_system::{PluginLoader, PluginManager};
-
-    use crate::utils::test_manager::TestManagerPlugin;
-
-    fn get_plugin_path(name: &str, format: &str) -> PathBuf {
-        std::env::current_dir().unwrap().join(format!(
-            "../plugins/dependency/{name}/target/debug/plugin.{format}"
-        ))
-    }
-
-    fn loader_init() -> PluginLoader {
-        let mut plugin_managers: Vec<Box<dyn PluginManager>> = Vec::new();
-        plugin_managers.push(TestManagerPlugin::new());
-
-        match PluginLoader::init(plugin_managers) {
-            Ok(loader) => loader,
-            Err(e) => {
-                panic!("{:?}: {}", e, e.to_string())
-            }
-        }
-    }
+    use crate::utils::{loader_init, managers::VoidPluginManager, get_void_plugin_path};
 
     fn get_dependencys_path() -> Vec<PathBuf> {
         vec![
-            get_plugin_path("dep_1", "testpl"),
-            get_plugin_path("dep_2", "testpl"),
-            get_plugin_path("dep_3", "testpl"),
-            get_plugin_path("dep_4", "testpl"),
+            get_void_plugin_path("dependency/dep_1"),
+            get_void_plugin_path("dependency/dep_2"),
+            get_void_plugin_path("dependency/dep_3"),
+            get_void_plugin_path("dependency/dep_4"),
         ]
     }
 
     #[test]
     fn register_dependency_plugin() {
-        let mut loader = loader_init();
+        let mut loader = loader_init(VoidPluginManager::new());
 
         for path in get_dependencys_path() {
             match loader.register_plugin(path.to_str().unwrap()) {
@@ -55,7 +35,7 @@ mod dependency {
 
     #[test]
     fn load_dependency_plugin() {
-        let mut loader = loader_init();
+        let mut loader = loader_init(VoidPluginManager::new());
 
         for path in get_dependencys_path() {
             match loader.register_plugin(path.to_str().unwrap()) {

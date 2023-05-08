@@ -2,33 +2,11 @@ mod utils;
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use august_plugin_system::{PluginLoader, PluginManager};
-
-    use crate::utils::test_manager::TestManagerPlugin;
-
-    fn get_plugin_path(name: &str, format: &str) -> PathBuf {
-        std::env::current_dir()
-            .unwrap()
-            .join(format!("../plugins/{name}/target/debug/plugin.{format}"))
-    }
-
-    fn loader_init() -> PluginLoader {
-        let mut plugin_managers: Vec<Box<dyn PluginManager>> = Vec::new();
-        plugin_managers.push(TestManagerPlugin::new());
-
-        match PluginLoader::init(plugin_managers) {
-            Ok(loader) => loader,
-            Err(e) => {
-                panic!("{:?}: {}", e, e.to_string())
-            }
-        }
-    }
+    use crate::utils::{get_void_plugin_path, loader_init, managers::VoidPluginManager};
 
     #[test]
     fn get_plugin_manager() {
-        let mut loader = loader_init();
+        let mut loader = loader_init(VoidPluginManager::new());
 
         let is_manager = loader.get_manager(0).is_some();
 
@@ -41,9 +19,9 @@ mod tests {
 
     #[test]
     fn register_plugin() {
-        let mut loader = loader_init();
+        let mut loader = loader_init(VoidPluginManager::new());
 
-        match loader.register_plugin(get_plugin_path("native_plugin", "testpl").to_str().unwrap()) {
+        match loader.register_plugin(get_void_plugin_path("void_plugin").to_str().unwrap()) {
             Ok(plugin) => {
                 {
                     let pl = plugin.borrow();
@@ -67,9 +45,9 @@ mod tests {
 
     #[test]
     fn load_plugin() {
-        let mut loader = loader_init();
+        let mut loader = loader_init(VoidPluginManager::new());
 
-        match loader.register_plugin(get_plugin_path("native_plugin", "testpl").to_str().unwrap()) {
+        match loader.register_plugin(get_void_plugin_path("void_plugin").to_str().unwrap()) {
             Ok(plugin) => {
                 if let Err(e) = loader.load_plugin(&plugin) {
                     panic!("{:?}: {}", e, e.to_string());
@@ -91,9 +69,9 @@ mod tests {
 
     #[test]
     fn load_now_plugin() {
-        let mut loader = loader_init();
+        let mut loader = loader_init(VoidPluginManager::new());
 
-        match loader.load_plugin_now(get_plugin_path("native_plugin", "testpl").to_str().unwrap()) {
+        match loader.load_plugin_now(get_void_plugin_path("void_plugin").to_str().unwrap()) {
             Ok(plugin) => {
                 if let Err(e) = loader.load_plugin(&plugin) {
                     panic!("{:?}: {}", e, e.to_string());

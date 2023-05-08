@@ -1,8 +1,0 @@
-id = "dep_1"
-name = "Depend 1"
-description = ""
-version = "1.0.0"
-author = "Bleyn"
-license = "MIT"
-depends = []
-optional_depends = []

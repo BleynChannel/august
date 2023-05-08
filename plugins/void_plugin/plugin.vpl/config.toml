@@ -1,0 +1,8 @@
+id = "void_plugin"
+name = "Void Plugin"
+description = "Плагин для тестирования загрузчика плагинов"
+version = "1.0.0"
+author = "Bleyn"
+license = "MIT"
+depends = []
+optional_depends = []

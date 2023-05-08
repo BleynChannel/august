@@ -1,1 +1,0 @@
-C:\Projects\Project\AUGUST\august\plugins\native_plugin\target\debug\native_plugin.dll: C:\Projects\Project\AUGUST\august\plugins\native_plugin\build.rs C:\Projects\Project\AUGUST\august\plugins\native_plugin\plugin.testpl/* C:\Projects\Project\AUGUST\august\plugins\native_plugin\src\lib.rs
