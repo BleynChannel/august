@@ -1,3 +1,4 @@
+use std::error::Error as StdError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -13,7 +14,7 @@ pub enum RegisterManagerError {
     #[error("Format `{0}` is already occupied")]
     AlreadyOccupiedFormat(String),
     #[error("Manager registration error by the manager")]
-    RegisterManagerByManager(#[from] anyhow::Error),
+    RegisterManagerByManager(#[from] Box<dyn StdError>),
 }
 
 #[derive(Error, Debug)]
@@ -21,7 +22,7 @@ pub enum UnregisterManagerError {
     #[error("Not found manager")]
     NotFound,
     #[error("Manager unregistration error by the manager")]
-    UnregisterManagerByManager(#[from] anyhow::Error),
+    UnregisterManagerByManager(#[from] Box<dyn StdError>),
 }
 
 #[derive(Error, Debug)]
@@ -33,7 +34,7 @@ pub enum RegisterPluginError {
     #[error("Unknown plugin manager for the format '{0}'")]
     UnknownManagerFormat(String),
     #[error("Plugin registration error by the manager")]
-    RegisterPluginByManager(#[from] anyhow::Error),
+    RegisterPluginByManager(#[from] Box<dyn StdError>),
     #[error("A plugin with this ID already exists")]
     AlreadyExistsID(String),
 }
@@ -47,7 +48,7 @@ pub enum UnregisterPluginError {
     #[error("The plugin has an unregistered manager")]
     HasUnregisteredManager,
     #[error("Plugin unregistration error by the manager")]
-    UnregisterPluginByManager(#[from] anyhow::Error),
+    UnregisterPluginByManager(#[from] Box<dyn StdError>),
 }
 
 #[derive(Error, Debug)]
@@ -60,7 +61,7 @@ pub enum LoadPluginError {
         error: Box<LoadPluginError>,
     },
     #[error("Plugin load error by the manager")]
-    LoadPluginByManager(#[from] anyhow::Error),
+    LoadPluginByManager(#[from] Box<dyn StdError>),
 }
 
 #[derive(Error, Debug)]
@@ -68,5 +69,7 @@ pub enum UnloadPluginError {
     #[error("The plugin is dependent on plugin `{0}`")]
     DependentOnAnotherPlugin(String),
     #[error("Plugin unload error by the manager")]
-    UnloadPluginByManager(#[from] anyhow::Error),
+    UnloadPluginByManager(#[from] Box<dyn StdError>),
 }
+
+pub type FunctionResult<T> = Result<T, Box<dyn std::error::Error>>;

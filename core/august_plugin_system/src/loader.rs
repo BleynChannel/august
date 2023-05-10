@@ -1,100 +1,16 @@
-mod error;
-pub use error::*;
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    path::Path,
+    rc::Rc,
+};
 
-use serde::{Deserialize, Serialize};
-
-use std::cell::{Ref, RefCell, RefMut};
-use std::fmt::Debug;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
-
-pub type Link<T> = Rc<RefCell<T>>;
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, PartialOrd)]
-pub struct PluginInfo {
-    pub id: String,
-    pub depends: Vec<String>,
-    pub optional_depends: Vec<String>,
-}
-
-impl PluginInfo {
-    pub fn new(id: String) -> Self {
-        Self {
-            id,
-            depends: Vec::new(),
-            optional_depends: Vec::new(),
-        }
-    }
-}
-
-pub struct Plugin {
-    manager: Link<Box<dyn PluginManager>>,
-    path: PathBuf,
-    info: PluginInfo,
-    is_load: bool,
-}
-
-impl PartialEq for Plugin {
-    fn eq(&self, other: &Self) -> bool {
-        self.info.id == other.info.id
-    }
-}
-
-impl Debug for Plugin {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Plugin").field("id", &self.info.id).finish()
-    }
-}
-
-impl Plugin {
-    pub fn get_path(&self) -> &PathBuf {
-        &self.path
-    }
-
-    pub fn get_info(&self) -> &PluginInfo {
-        &self.info
-    }
-
-    pub fn is_load(&self) -> bool {
-        self.is_load
-    }
-}
-
-pub trait PluginManager {
-    fn format(&self) -> &str;
-
-    fn register_manager(&mut self) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn unregister_manager(&mut self) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn register_plugin(&mut self, path: &PathBuf) -> anyhow::Result<PluginInfo> {
-        Ok(PluginInfo::new(
-            path.file_name().unwrap().to_str().unwrap().to_string(),
-        ))
-    }
-    fn unregister_plugin(&mut self, _plugin: &Link<Plugin>) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn register_plugin_error(&mut self, _info: &PluginInfo) {}
-
-    fn load_plugin(&mut self, _plugin: &Link<Plugin>) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn unload_plugin(&mut self, _plugin: &Link<Plugin>) -> anyhow::Result<()> {
-        Ok(())
-    }
-}
-
-impl PartialEq for dyn PluginManager {
-    fn eq(&self, other: &Self) -> bool {
-        self.format() == other.format()
-    }
-}
+use crate::{
+    error::{
+        LoadPluginError, RegisterManagerError, RegisterPluginError, StopLoaderError,
+        UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
+    },
+    Link, Plugin, PluginManager,
+};
 
 pub struct PluginLoader {
     managers: Vec<Link<Box<dyn PluginManager>>>,
@@ -334,7 +250,7 @@ impl PluginLoader {
             .manager
             .as_ref()
             .borrow_mut()
-            .unregister_plugin(plugin)?;
+            .unregister_plugin(&*plugin_ref)?;
 
         self.plugins.retain(|p| p.borrow().info != plugin_ref.info);
 
@@ -382,7 +298,7 @@ impl PluginLoader {
             }
 
             // Загружаем плагин
-            plugin_ref.manager.borrow_mut().load_plugin(plugin)?;
+            plugin_ref.manager.borrow_mut().load_plugin(&*plugin_ref)?;
         }
 
         plugin.borrow_mut().is_load = true;
@@ -391,32 +307,38 @@ impl PluginLoader {
     }
 
     pub fn unload_plugin(&self, plugin: &Link<Plugin>) -> Result<(), UnloadPluginError> {
-        if plugin.borrow().is_load {
-            for plug in self.plugins.iter() {
-                let plug_info = &plug.borrow().info;
+        {
+            let plugin_ref = plugin.borrow();
+            if plugin_ref.is_load {
+                for plug in self.plugins.iter() {
+                    let plug_info = &plug.borrow().info;
 
-                if let Some(_) = plug_info
-                    .depends
-                    .iter()
-                    .find(|depend| **depend == plug_info.id)
-                {
-                    return Err(UnloadPluginError::DependentOnAnotherPlugin(
-                        plug_info.id.clone(),
-                    ));
+                    if let Some(_) = plug_info
+                        .depends
+                        .iter()
+                        .find(|depend| **depend == plug_info.id)
+                    {
+                        return Err(UnloadPluginError::DependentOnAnotherPlugin(
+                            plug_info.id.clone(),
+                        ));
+                    }
+
+                    if let Some(_) = plug_info
+                        .optional_depends
+                        .iter()
+                        .find(|depend| **depend == plug_info.id)
+                    {
+                        return Err(UnloadPluginError::DependentOnAnotherPlugin(
+                            plug_info.id.clone(),
+                        ));
+                    }
                 }
 
-                if let Some(_) = plug_info
-                    .optional_depends
-                    .iter()
-                    .find(|depend| **depend == plug_info.id)
-                {
-                    return Err(UnloadPluginError::DependentOnAnotherPlugin(
-                        plug_info.id.clone(),
-                    ));
-                }
+                plugin_ref
+                    .manager
+                    .borrow_mut()
+                    .unload_plugin(&*plugin_ref)?;
             }
-
-            plugin.borrow().manager.borrow_mut().unload_plugin(plugin)?;
         }
 
         plugin.borrow_mut().is_load = false;
@@ -440,6 +362,44 @@ impl PluginLoader {
                 return Err((Some(e), None));
             }
         }
+    }
+
+    pub fn load_plugins(
+        &mut self,
+        plugin_paths: Vec<&str>,
+    ) -> Result<Vec<Link<Plugin>>, (Option<RegisterPluginError>, Option<LoadPluginError>)> {
+        let mut plugins = Vec::new();
+
+        for path in plugin_paths {
+            plugins.push(match self.register_plugin(path) {
+                Ok(plugin) => plugin,
+                Err(e) => return Err((Some(e), None)),
+            });
+        }
+
+        // Перебор плагинов, которые не являются зависимостями для других плагинов
+        let not_depend_plugin = self.plugins.iter().filter(|plugin| {
+            let id = &plugin.borrow().info.id;
+            if let Some(_) = self.plugins.iter().find(|p| {
+                let p_info = &p.borrow().info;
+                let mut depends_iter = p_info.depends.iter().chain(p_info.optional_depends.iter());
+
+                depends_iter.find(|depend| **depend == *id).is_some()
+            }) {
+                return false;
+            }
+
+            true
+        });
+
+        // Загрузка плагинов и их зависимостей
+        for plugin in not_depend_plugin {
+            if let Err(e) = self.load_plugin(&plugin) {
+                return Err((None, Some(e)));
+            }
+        }
+
+        Ok(plugins)
     }
 
     pub fn get_plugin(&self, index: usize) -> Option<Link<Plugin>> {

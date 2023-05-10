@@ -1,14 +1,13 @@
 [package]
-name = "august_plugin_system"
+name = "august_native_manager"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.70"
-serde = { version = "1.0.160", features = ["derive"] }
+august_plugin_system = { path = "../../august_plugin_system" }
+libloading = "0.8.0"
+serde = "1.0.162"
 thiserror = "1.0.40"
-
-[dev-dependencies]
 toml = "0.7.3"

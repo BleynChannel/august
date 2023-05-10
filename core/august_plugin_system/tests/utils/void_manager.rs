@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use august_plugin_system::{Link, Plugin, PluginInfo, PluginManager};
+use august_plugin_system::{Plugin, PluginInfo, PluginManager, error::FunctionResult};
 
 use crate::utils::native_config::{load_config, NativeConfig};
 
@@ -13,28 +13,28 @@ impl PluginManager for VoidPluginManager {
         "vpl"
     }
 
-    fn register_manager(&mut self) -> anyhow::Result<()> {
+    fn register_manager(&mut self) -> FunctionResult<()> {
         println!("VoidPluginManager::register_manager");
         Ok(())
     }
 
-    fn unregister_manager(&mut self) -> anyhow::Result<()> {
+    fn unregister_manager(&mut self) -> FunctionResult<()> {
         println!("VoidPluginManager::unregister_manager");
         Ok(())
     }
 
-    fn register_plugin(&mut self, path: &PathBuf) -> anyhow::Result<PluginInfo> {
-		let (config, info) = load_config(path)?;
+    fn register_plugin(&mut self, path: &PathBuf) -> FunctionResult<PluginInfo> {
+        let (config, info) = load_config(path)?;
         self.configs.push(config);
 
         println!("VoidPluginManager::register_plugin - {}", info.id);
         Ok(info)
     }
 
-    fn unregister_plugin(&mut self, plugin: &Link<Plugin>) -> anyhow::Result<()> {
+    fn unregister_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
         println!(
             "VoidPluginManager::unregister_plugin - {:?}",
-            plugin.borrow().get_path()
+            plugin.get_path()
         );
         Ok(())
     }
@@ -52,18 +52,18 @@ impl PluginManager for VoidPluginManager {
         println!("VoidPluginManager::register_plugin_error");
     }
 
-    fn load_plugin(&mut self, plugin: &Link<Plugin>) -> anyhow::Result<()> {
+    fn load_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
         println!(
             "VoidPluginManager::load_plugin - {:?}",
-            plugin.borrow().get_info().id
+            plugin.get_info().id
         );
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: &Link<Plugin>) -> anyhow::Result<()> {
+    fn unload_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
         println!(
             "VoidPluginManager::unload_plugin - {:?}",
-            plugin.borrow().get_info().id
+            plugin.get_info().id
         );
         Ok(())
     }
