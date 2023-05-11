@@ -20,15 +20,10 @@ mod dependency {
         let mut loader = loader_init(VoidPluginManager::new());
 
         for path in get_dependencys_path() {
-            match loader.register_plugin(path.to_str().unwrap()) {
-                Ok(_) => {}
-                Err(e) => panic!("{:?}: {}", e, e.to_string()),
-            }
+            loader.register_plugin(path.to_str().unwrap()).unwrap();
         }
 
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.stop().unwrap();
     }
 
     #[test]
@@ -36,20 +31,13 @@ mod dependency {
         let mut loader = loader_init(VoidPluginManager::new());
 
         for path in get_dependencys_path() {
-            match loader.register_plugin(path.to_str().unwrap()) {
-                Ok(_) => {}
-                Err(e) => panic!("{:?}: {}", e, e.to_string()),
-            }
+            loader.register_plugin(path.to_str().unwrap()).unwrap();
         }
 
         let plugin = loader.get_plugin(2).unwrap();
-        if let Err(e) = loader.load_plugin(&plugin) {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.load_plugin(&plugin).unwrap();
 
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.stop().unwrap();
     }
 
     #[test]
@@ -76,8 +64,6 @@ mod dependency {
             );
         }
 
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.stop().unwrap();
     }
 }

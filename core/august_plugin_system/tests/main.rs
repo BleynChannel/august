@@ -10,9 +10,7 @@ mod tests {
 
         let is_manager = loader.get_manager(0).is_some();
 
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.stop().unwrap();
 
         assert!(is_manager);
     }
@@ -21,68 +19,46 @@ mod tests {
     fn register_plugin() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let plugin =
-            match loader.register_plugin(get_plugin_path("void_plugin").to_str().unwrap()) {
-                Ok(plugin) => plugin,
-                Err(e) => panic!("{:?}: {}", e, e.to_string()),
-            };
-
+        let plugin = loader
+            .register_plugin(get_plugin_path("void_plugin").to_str().unwrap())
+            .unwrap();
         {
             let pl = plugin.borrow();
-
             println!("Path = {:?}, ID = {}", pl.get_path(), pl.get_info().id);
         }
 
-        if let Err(e) = loader.unregister_plugin(&plugin) {
-            panic!("{:?}: {}", e, e.to_string());
-        }
-
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.unregister_plugin(&plugin).unwrap();
+        loader.stop().unwrap();
     }
 
     #[test]
     fn load_plugin() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let plugin =
-            match loader.register_plugin(get_plugin_path("void_plugin").to_str().unwrap()) {
-                Ok(plugin) => plugin,
-                Err(e) => panic!("{:?}: {}", e, e.to_string()),
-            };
+        let plugin = loader
+            .register_plugin(get_plugin_path("void_plugin").to_str().unwrap())
+            .unwrap();
 
-        if let Err(e) = loader.load_plugin(&plugin) {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.load_plugin(&plugin).unwrap();
+        loader.unload_plugin(&plugin).unwrap();
 
-        if let Err(e) = loader.unload_plugin(&plugin) {
-            panic!("{:?}: {}", e, e.to_string());
-        }
-
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.stop().unwrap();
     }
 
     #[test]
     fn load_now_plugin() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let plugin =
-            match loader.load_plugin_now(get_plugin_path("void_plugin").to_str().unwrap()) {
-                Ok(plugin) => plugin,
-                Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
-                Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
-                Err((_, _)) => panic!("Unexpected error"),
-            };
+        let plugin = match loader.load_plugin_now(get_plugin_path("void_plugin").to_str().unwrap())
+        {
+            Ok(plugin) => plugin,
+            Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
+            Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
+            Err((_, _)) => panic!("Unexpected error"),
+        };
 
-        if let Err(e) = loader.load_plugin(&plugin) {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.load_plugin(&plugin).unwrap();
 
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader.stop().unwrap();
     }
 }
