@@ -2,7 +2,7 @@ use std::{env::consts::OS, path::PathBuf};
 
 use crate::{config::NativeConfig, Plugin};
 use august_plugin_system::{
-    error::FunctionResult, Plugin as AugustPlugin, PluginInfo, PluginManager,
+    utils::FunctionResult, Plugin as AugustPlugin, PluginInfo, PluginManager, WrapperLoader,
 };
 use libloading::Library;
 
@@ -34,7 +34,7 @@ impl PluginManager for NativePluginManager {
         "npl"
     }
 
-    fn register_manager(&mut self) -> FunctionResult<()> {
+    fn register_manager(&mut self, _: WrapperLoader) -> FunctionResult<()> {
         Ok(())
     }
     fn unregister_manager(&mut self) -> FunctionResult<()> {

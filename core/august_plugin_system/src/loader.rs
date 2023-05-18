@@ -5,11 +5,11 @@ use std::{
 };
 
 use crate::{
-    error::{
+    utils::{
         LoadPluginError, RegisterManagerError, RegisterPluginError, StopLoaderError,
         UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
     },
-    Link, Plugin, PluginManager,
+    Link, Plugin, PluginManager, WrapperLoader,
 };
 
 pub struct PluginLoader {
@@ -145,9 +145,11 @@ impl PluginLoader {
             ));
         }
 
+		let wrapper = WrapperLoader::new(self);
+
         self.managers.push(Rc::new(RefCell::new(manager)));
         let manager = self.managers.last().unwrap();
-        manager.borrow_mut().register_manager()?;
+		manager.borrow_mut().register_manager(wrapper)?;
 
         Ok(())
     }

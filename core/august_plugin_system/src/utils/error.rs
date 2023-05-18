@@ -1,4 +1,7 @@
-use std::error::Error as StdError;
+use std::{
+    error::Error as StdError,
+    fmt::{Debug, Display},
+};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -73,3 +76,22 @@ pub enum UnloadPluginError {
 }
 
 pub type FunctionResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+#[derive(Debug)]
+pub struct ParseVariableError {
+    ty: String,
+}
+
+impl ParseVariableError {
+    pub fn new(ty: String) -> Self {
+        Self { ty }
+    }
+}
+
+impl Display for ParseVariableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "data cannot be converted to this type `{}`", self.ty)
+    }
+}
+
+impl StdError for ParseVariableError {}

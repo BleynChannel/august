@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use august_plugin_system::error::FunctionResult;
+use august_plugin_system::utils::FunctionResult;
 use serde::{Deserialize, Serialize};
 
 use crate::error::RegisterPluginError;

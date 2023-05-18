@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use august_plugin_system::{Plugin, PluginInfo, PluginManager, error::FunctionResult};
+use august_plugin_system::{Plugin, PluginInfo, PluginManager, utils::FunctionResult, WrapperLoader};
 
 use crate::utils::native_config::{load_config, NativeConfig};
 
@@ -13,7 +13,7 @@ impl PluginManager for VoidPluginManager {
         "vpl"
     }
 
-    fn register_manager(&mut self) -> FunctionResult<()> {
+    fn register_manager(&mut self, _: WrapperLoader) -> FunctionResult<()> {
         println!("VoidPluginManager::register_manager");
         Ok(())
     }

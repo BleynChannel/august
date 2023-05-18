@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 
-use crate::{Plugin, PluginInfo, error::FunctionResult};
+use crate::{utils::FunctionResult, Plugin, PluginInfo, WrapperLoader};
 
 pub trait PluginManager {
     fn format(&self) -> &str;
 
-    fn register_manager(&mut self) -> FunctionResult<()> {
+    fn register_manager(&mut self, loader: WrapperLoader) -> FunctionResult<()> {
         Ok(())
     }
+
     fn unregister_manager(&mut self) -> FunctionResult<()> {
         Ok(())
     }

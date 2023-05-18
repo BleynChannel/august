@@ -1,6 +1,7 @@
 [workspace]
 members = [
 	"core/august_plugin_system",
+	"core/august_plugin_system/codegen",
 	"core/managers/august_native_manager",
 	"core/managers/august_wasm_manager",
 ]
