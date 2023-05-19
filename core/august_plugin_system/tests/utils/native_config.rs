@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use august_plugin_system::{PluginInfo, utils::FunctionResult};
+use august_plugin_system::{utils::FunctionResult, PluginInfo};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]

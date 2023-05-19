@@ -90,12 +90,12 @@ fn serialize_output(ty: &TypePath) -> TokenStream {
         )
         .unwrap();
 
-		quote! { #ser_token (result) }
+        quote! { #ser_token (result) }
     } else if type_name == "Vec" {
-		quote! { august_plugin_system::variable::VariableData::List(result.iter().map(|item| (*item).into()).collect()) }
-	} else if type_name == "VariableData" {
-		quote! { result }
-	} else {
-		TokenStream::new()
-	}
+        quote! { august_plugin_system::variable::VariableData::List(result.iter().map(|item| (*item).into()).collect()) }
+    } else if type_name == "VariableData" {
+        quote! { result }
+    } else {
+        TokenStream::new()
+    }
 }

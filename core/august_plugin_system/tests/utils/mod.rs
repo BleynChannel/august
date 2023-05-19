@@ -14,8 +14,7 @@ pub fn get_plugin_path(name: &str) -> PathBuf {
         .join(format!("../../plugins/{name}/plugin.vpl"))
 }
 
-pub fn loader_init(manager: Box<dyn PluginManager>) -> PluginLoader
-{
+pub fn loader_init(manager: Box<dyn PluginManager>) -> PluginLoader {
     let mut plugin_managers: Vec<Box<dyn PluginManager>> = Vec::new();
     plugin_managers.push(manager);
 

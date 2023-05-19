@@ -4,13 +4,6 @@ members = [
 	"core/august_plugin_system/codegen",
 	"core/managers/august_native_manager",
 	"core/managers/august_wasm_manager",
-]
-exclude = [
-	"plugins/native_plugin",
-	"plugins/custom_plugin_manager",
 
-	"plugins/dependency/dep_1",
-	"plugins/dependency/dep_2",
-	"plugins/dependency/dep_3",
-	"plugins/dependency/dep_4",
+	"plugins/native_plugin",
 ]

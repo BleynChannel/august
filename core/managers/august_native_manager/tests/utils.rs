@@ -11,7 +11,7 @@ pub fn loader_init() -> PluginLoader {
 }
 
 pub fn get_plugin_path(name: &str) -> PathBuf {
-    std::env::current_dir()
+	std::env::current_dir()
         .unwrap()
-        .join(format!("../../../plugins/{name}/target/debug/plugin.npl"))
+        .join(format!("../../../plugins/{name}/build/plugin.npl"))
 }

@@ -89,11 +89,11 @@ mod main {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(VariableData::Null));
 
-		// Print
-		let print = Print::as_function();
-		result = print.run(vec!["hello".into()].as_slice());
+        // Print
+        let print = Print::as_function();
+        result = print.run(vec!["hello".into()].as_slice());
 
-		assert!(result.is_ok());
-		assert_eq!(result.unwrap(), None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
     }
 }

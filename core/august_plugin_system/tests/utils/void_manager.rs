@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use august_plugin_system::{Plugin, PluginInfo, PluginManager, utils::FunctionResult, WrapperLoader};
+use august_plugin_system::{
+    utils::FunctionResult, Plugin, PluginInfo, PluginManager, WrapperLoader,
+};
 
 use crate::utils::native_config::{load_config, NativeConfig};
 

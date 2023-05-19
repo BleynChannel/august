@@ -1,6 +1,6 @@
 mod config;
-mod manager;
 pub mod error;
+mod manager;
 mod plugin;
 
 pub use config::*;
