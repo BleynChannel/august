@@ -54,16 +54,10 @@ impl PluginManager for NativePluginManager {
 
         // Загрузка библиотеки
         #[cfg(target_os = "windows")]
-        let script = "main";
+        let script = "main.dll";
         #[cfg(target_os = "linux")]
-        let script = "libmain";
+        let script = "libmain.so";
         //TODO: Сделать для MacOS
-
-        let test_path = path.join(OS.to_string() + "/");
-        for entry in std::fs::read_dir(test_path).expect("Read dir error") {
-			let entry = entry.unwrap();
-			println!("{:?}", entry.file_name())
-		}
 
         let library;
         unsafe {
