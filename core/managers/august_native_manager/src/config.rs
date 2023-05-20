@@ -20,7 +20,6 @@ pub struct NativeConfig {
 impl NativeConfig {
     pub fn load(plugin_path: &PathBuf) -> FunctionResult<NativeConfig> {
         let config_path = plugin_path.join("config.toml");
-		println!("{:?}", config_path);
         if !config_path.exists() {
             return Err(Box::new(RegisterPluginError::DoesNotContainConfig));
         }
