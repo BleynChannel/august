@@ -23,7 +23,15 @@ fn get_plugin_path
 	end
 end
 
-fn copy_target
+fn pack
+	from_path = set "./${1}"
+	to_path = set "./build"
+
+	rm -r ${to_path}
+	cp ${from_path} ${to_path}
+end
+
+fn copy_source
 	workspace_target = set "${workspace}/target/${profile}"
 	package_path = set "./build/${1}"
 
@@ -40,7 +48,8 @@ fn copy_target
 end
 
 plugin_path = get_plugin_path
-copy_target ${plugin_path}
+pack ${plugin_path}
+copy_source ${plugin_path}
 '''
 
 [tasks.default]
