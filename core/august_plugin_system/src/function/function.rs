@@ -29,7 +29,7 @@ pub struct Function {
     name: &'static str,
     description: &'static str,
     inputs: Vec<Arg>,
-    ouputs: Option<Arg>,
+    output: Option<Arg>,
     data: Box<dyn Fn(&[VariableData]) -> FunctionResult<Option<VariableData>>>,
 }
 
@@ -48,7 +48,7 @@ impl Function {
             name,
             description,
             inputs,
-            ouputs: output,
+            output,
             data: Box::new(data),
         }
     }
@@ -66,7 +66,7 @@ impl Function {
     }
 
     pub fn get_output(&self) -> &Option<Arg> {
-        &self.ouputs
+        &self.output
     }
 
     pub fn run(&self, args: &[VariableData]) -> FunctionResult<Option<VariableData>> {
@@ -86,7 +86,7 @@ impl std::fmt::Debug for Function {
         f.write_str(format!("({:?})", self.inputs).as_str())?;
         f.write_str(" -> ")?;
 
-        if let Some(arg) = &self.ouputs {
+        if let Some(arg) = &self.output {
             return f.write_str(format!("{:?}", arg).as_str());
         } else {
             return f.write_str("void");

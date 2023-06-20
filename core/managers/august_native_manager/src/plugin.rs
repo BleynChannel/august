@@ -6,15 +6,15 @@ use crate::NativeConfig;
 pub struct Plugin {
     pub(crate) info: PluginInfo,
     pub(crate) config: NativeConfig,
-    pub(crate) library: Library,
+    pub(crate) library: Option<Library>,
 }
 
 impl Plugin {
-    pub fn new(info: PluginInfo, config: NativeConfig, library: Library) -> Self {
+    pub fn new(info: PluginInfo, config: NativeConfig) -> Self {
         Self {
             info,
             config,
-            library,
+            library: None,
         }
     }
 }

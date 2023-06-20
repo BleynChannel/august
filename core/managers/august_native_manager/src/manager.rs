@@ -52,20 +52,7 @@ impl PluginManager for NativePluginManager {
                 .map_or(Vec::new(), |v| v.clone()),
         };
 
-        // Загрузка библиотеки
-        #[cfg(target_os = "windows")]
-        let script = "main.dll";
-        #[cfg(target_os = "linux")]
-        let script = "libmain.so";
-        //TODO: Сделать для MacOS
-
-        let library;
-        unsafe {
-            library = Library::new(path.join(OS.to_string() + "/" + script).as_os_str())?;
-        }
-
-        self.plugins
-            .push(Plugin::new(info.clone(), config, library));
+        self.plugins.push(Plugin::new(info.clone(), config));
         Ok(info)
     }
     fn unregister_plugin(&mut self, plugin: &AugustPlugin) -> FunctionResult<()> {
@@ -78,6 +65,26 @@ impl PluginManager for NativePluginManager {
     }
 
     fn load_plugin(&mut self, plugin: &AugustPlugin) -> FunctionResult<()> {
+        // Загрузка библиотеки
+        #[cfg(target_os = "windows")]
+        let script = "main.dll";
+        #[cfg(target_os = "linux")]
+        let script = "libmain.so";
+        //TODO: Сделать для MacOS
+
+        let library;
+        unsafe {
+            library = Library::new(
+                plugin
+                    .get_path()
+                    .join(OS.to_string() + "/" + script)
+                    .as_os_str(),
+            )?;
+        }
+
+		let info = plugin.get_info();
+		self.plugins.iter_mut().find(|p| p.info == *info).unwrap().library = Some(library);
+
         Ok(())
     }
 
