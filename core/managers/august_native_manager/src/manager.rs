@@ -2,7 +2,8 @@ use std::{env::consts::OS, path::PathBuf};
 
 use crate::{config::NativeConfig, Plugin};
 use august_plugin_system::{
-    utils::FunctionResult, Plugin as AugustPlugin, PluginInfo, PluginManager, WrapperLoader,
+    context::LoadPluginContext, utils::FunctionResult, Plugin as AugustPlugin, PluginInfo,
+    PluginManager, WrapperLoader,
 };
 use libloading::Library;
 
@@ -56,7 +57,7 @@ impl PluginManager for NativePluginManager {
         Ok(info)
     }
     fn unregister_plugin(&mut self, plugin: &AugustPlugin) -> FunctionResult<()> {
-        self.remove_plugin(&plugin.get_info());
+        self.remove_plugin(&plugin.info());
         Ok(())
     }
 
@@ -64,7 +65,9 @@ impl PluginManager for NativePluginManager {
         self.remove_plugin(info);
     }
 
-    fn load_plugin(&mut self, plugin: &AugustPlugin) -> FunctionResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext) -> FunctionResult<()> {
+        let plugin = context.plugin();
+
         // Загрузка библиотеки
         #[cfg(target_os = "windows")]
         let script = "main.dll";
@@ -76,19 +79,31 @@ impl PluginManager for NativePluginManager {
         unsafe {
             library = Library::new(
                 plugin
-                    .get_path()
+                    .path()
                     .join(OS.to_string() + "/" + script)
                     .as_os_str(),
             )?;
         }
 
-		let info = plugin.get_info();
-		self.plugins.iter_mut().find(|p| p.info == *info).unwrap().library = Some(library);
+        let info = plugin.info();
+        self.plugins
+            .iter_mut()
+            .find(|p| p.info == info)
+            .unwrap()
+            .library = Some(library);
 
         Ok(())
     }
 
     fn unload_plugin(&mut self, plugin: &AugustPlugin) -> FunctionResult<()> {
+        let info = plugin.info();
+        self.plugins
+            .iter_mut()
+            .find(|p| p.info == info)
+            .unwrap()
+            .library
+            .take();
+
         Ok(())
     }
 }

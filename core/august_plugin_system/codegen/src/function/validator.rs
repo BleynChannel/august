@@ -41,7 +41,15 @@ fn validate_struct(ast: &DataStruct) -> Result<()> {
 }
 
 fn validate_field(field: &Field) -> Result<()> {
-    validate_field_type(&field.ty)
+	// Если есть external и нет output, то проверяем тип
+	let mut attrs = field.attrs.iter();
+	if let Some(_) = attrs.find(|attr| attr.path().is_ident("external")) {
+		if let None = attrs.find(|attr| attr.path().is_ident("output")) {
+			return Ok(());
+		}
+	}
+
+	validate_field_type(&field.ty)
 }
 
 fn validate_field_type(ty: &Type) -> Result<()> {
@@ -69,7 +77,7 @@ const VALIDATE_TYPE: [&str; 15] = [
     "char",
     "String",
     "Vec",
-    "VariableData",
+    "Variable",
 ];
 
 fn validate_field_path(path: &TypePath) -> Result<()> {

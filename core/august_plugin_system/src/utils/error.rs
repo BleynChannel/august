@@ -5,6 +5,12 @@ use std::{
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+pub enum BuilderError {
+	#[error("Register manager error")]
+	RegisterManagerError(#[from] RegisterManagerError)
+}
+
+#[derive(Error, Debug)]
 pub enum StopLoaderError {
     #[error("Failed to unregister plugins `{0:?}`")]
     UnregisterPluginFailed(Vec<(String, UnregisterPluginError)>),
@@ -65,6 +71,8 @@ pub enum LoadPluginError {
     },
     #[error("Plugin load error by the manager")]
     LoadPluginByManager(#[from] Box<dyn StdError>),
+	#[error("Requests not found: {0:?}")]
+	RequestsNotFound(Vec<String>)
 }
 
 #[derive(Error, Debug)]
@@ -75,15 +83,23 @@ pub enum UnloadPluginError {
     UnloadPluginByManager(#[from] Box<dyn StdError>),
 }
 
+#[derive(Error, Debug)]
+pub enum RegisterRequestError {
+	#[error("Function not found")]
+	NotFound,
+	#[error("The arguments are set incorrectly")]
+	ArgumentsIncorrectly,
+}
+
 pub type FunctionResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug)]
 pub struct ParseVariableError {
-    ty: String,
+    ty: &'static str,
 }
 
 impl ParseVariableError {
-    pub fn new(ty: String) -> Self {
+    pub fn new(ty: &'static str) -> Self {
         Self { ty }
     }
 }

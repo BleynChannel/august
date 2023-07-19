@@ -1,6 +1,6 @@
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VariableType {
-	Let,
+    Let,
     Int(VariableIntType),
     Float(VariableFloatType),
     Bool,
@@ -9,13 +9,13 @@ pub enum VariableType {
     List,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VariableIntType {
     Signed(VariableSignedIntType),
     Unsigned(VariableUnsignedIntType),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VariableSignedIntType {
     I8,
     I16,
@@ -23,7 +23,7 @@ pub enum VariableSignedIntType {
     I64,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VariableUnsignedIntType {
     U8,
     U16,
@@ -31,7 +31,7 @@ pub enum VariableUnsignedIntType {
     U64,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VariableFloatType {
     F32,
     F64,

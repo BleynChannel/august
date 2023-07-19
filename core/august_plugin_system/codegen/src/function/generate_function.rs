@@ -1,64 +1,63 @@
 use std::str::FromStr;
 
-use proc_macro2::{Ident, TokenStream};
-use quote::{format_ident, quote};
-use syn::{Field, Result, TypePath};
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::{Field, TypePath};
 
 use crate::function::utils::get_literal_type;
 
 pub(crate) fn generate_function(
-    inputs: &Vec<(usize, &Field)>,
-    output: &Option<(usize, &Field)>,
-) -> Result<TokenStream> {
+    externals: &Vec<&Field>,
+    inputs: &Vec<&Field>,
+    output: &Option<&Field>,
+) -> TokenStream {
+    let exts = serialize_exts(externals);
     let args = serialize_args(inputs);
-    let run = function_run(inputs, output);
+    let call = function_call(exts, args, output);
     let output = return_output(output);
 
-    Ok(quote! {
-        move |args: &[august_plugin_system::variable::VariableData]| ->
-            august_plugin_system::utils::FunctionResult<Option<august_plugin_system::variable::VariableData>> {
-            #args
-            #run
+    quote! {
+        move |exts, args| ->
+            august_plugin_system::utils::FunctionResult<Option<august_plugin_system::variable::Variable>> {
+            #call
             #output
         }
-    })
-}
-
-fn serialize_args(inputs: &Vec<(usize, &Field)>) -> TokenStream {
-    let args: Vec<TokenStream> = inputs
-        .iter()
-        .enumerate()
-        .map(|(index, (_, field))| {
-            let var_name = format_ident!("tmp_{}", index);
-            let ty = get_literal_type(*field);
-
-            quote! { let #var_name: #ty = args[#index].parse()?; }
-        })
-        .collect();
-
-    quote! {
-        #(#args)
-        *
     }
 }
 
-fn function_run(inputs: &Vec<(usize, &Field)>, output: &Option<(usize, &Field)>) -> TokenStream {
-    let output_token = output.map(|(_, output)| {
+fn serialize_exts(externals: &Vec<&Field>) -> TokenStream {
+    let exts: Vec<TokenStream> = externals
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            quote! { exts[#index].downcast_ref().ok_or("Failed to downcast")? }
+        })
+        .collect();
+
+    quote! { (#(#exts), *) }
+}
+
+fn serialize_args(inputs: &Vec<&Field>) -> TokenStream {
+    let args: Vec<TokenStream> = inputs
+        .iter()
+        .enumerate()
+        .map(|(index, _)| quote! { args[#index].parse()? })
+        .collect();
+
+    quote! { (#(#args), *) }
+}
+
+fn function_call(exts: TokenStream, args: TokenStream, output: &Option<&Field>) -> TokenStream {
+    let output_token = output.map(|output| {
         let ty = get_literal_type(output);
         quote! { let result: #ty = }
     });
 
-    let inputs_token: Vec<Ident> = inputs
-        .iter()
-        .enumerate()
-        .map(|(index, _)| format_ident!("tmp_{}", index))
-        .collect();
-
-    quote! { #output_token Self::run(#(#inputs_token),*); }
+    quote! { #output_token Self::call(#exts, #args); }
 }
 
-fn return_output(output: &Option<(usize, &Field)>) -> TokenStream {
-    output.map_or(quote! { Ok(None) }, |(_, field)| {
+fn return_output(output: &Option<&Field>) -> TokenStream {
+    output.map_or(quote! { Ok(None) }, |field| {
         let result = serialize_output(get_literal_type(field));
 
         quote! { Ok(Some(#result)) }
@@ -86,14 +85,14 @@ fn serialize_output(ty: &TypePath) -> TokenStream {
 
     if let Some((_, token)) = VARIABLE_DATAS.iter().find(|(name, _)| **name == type_name) {
         let ser_token = TokenStream::from_str(
-            format!("august_plugin_system::variable::VariableData::{}", *token).as_str(),
+            format!("august_plugin_system::variable::Variable::{}", *token).as_str(),
         )
         .unwrap();
 
         quote! { #ser_token (result) }
     } else if type_name == "Vec" {
-        quote! { august_plugin_system::variable::VariableData::List(result.iter().map(|item| (*item).into()).collect()) }
-    } else if type_name == "VariableData" {
+        quote! { august_plugin_system::variable::Variable::List(result.into_iter().map(|item| item.into()).collect()) }
+    } else if type_name == "Variable" {
         quote! { result }
     } else {
         TokenStream::new()

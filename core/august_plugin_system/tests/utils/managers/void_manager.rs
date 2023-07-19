@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use august_plugin_system::{
-    utils::FunctionResult, Plugin, PluginInfo, PluginManager, WrapperLoader,
+    utils::FunctionResult, Plugin, PluginInfo, PluginManager, WrapperLoader, context::LoadPluginContext,
 };
 
 use crate::utils::native_config::{load_config, NativeConfig};
@@ -36,7 +36,7 @@ impl PluginManager for VoidPluginManager {
     fn unregister_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
         println!(
             "VoidPluginManager::unregister_plugin - {:?}",
-            plugin.get_path()
+            plugin.path()
         );
         Ok(())
     }
@@ -54,10 +54,10 @@ impl PluginManager for VoidPluginManager {
         println!("VoidPluginManager::register_plugin_error");
     }
 
-    fn load_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext) -> FunctionResult<()> {
         println!(
             "VoidPluginManager::load_plugin - {:?}",
-            plugin.get_info().id
+            context.plugin().info().id
         );
         Ok(())
     }
@@ -65,7 +65,7 @@ impl PluginManager for VoidPluginManager {
     fn unload_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
         println!(
             "VoidPluginManager::unload_plugin - {:?}",
-            plugin.get_info().id
+            plugin.info().id
         );
         Ok(())
     }

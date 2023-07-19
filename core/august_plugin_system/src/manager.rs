@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{utils::FunctionResult, Plugin, PluginInfo, WrapperLoader};
+use crate::{utils::FunctionResult, Plugin, PluginInfo, WrapperLoader, context::LoadPluginContext};
 
 pub trait PluginManager {
     fn format(&self) -> &str;
@@ -24,7 +24,7 @@ pub trait PluginManager {
 
     fn register_plugin_error(&mut self, info: &PluginInfo) {}
 
-    fn load_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext) -> FunctionResult<()> {
         Ok(())
     }
 

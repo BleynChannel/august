@@ -1,7 +1,7 @@
 use crate::utils::ParseVariableError;
 
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
-pub enum VariableData {
+pub enum Variable {
     Null,
     I8(i8),
     I16(i16),
@@ -16,24 +16,24 @@ pub enum VariableData {
     Bool(bool),
     Char(char),
     String(String),
-    List(Vec<VariableData>),
+    List(Vec<Variable>),
 }
 
 pub trait FromVariable: Sized {
-	fn from_var(var: &VariableData) -> Result<Self, ParseVariableError>;
+	fn from_var(var: &Variable) -> Result<Self, ParseVariableError>;
 }
 
 #[test]
 fn into() {
     let a = 10_i16;
 
-    let b: VariableData = a.into();
-    assert_eq!(b, VariableData::I16(10));
+    let b: Variable = a.into();
+    assert_eq!(b, Variable::I16(10));
 }
 
 #[test]
 fn parse() {
-    let a: VariableData = 10_i16.into();
+    let a: Variable = 10_i16.into();
 
 	let b = a.parse::<i16>();
 

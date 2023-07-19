@@ -1,12 +1,14 @@
 use std::path::PathBuf;
 
 use august_native_manager::NativePluginManager;
-use august_plugin_system::PluginLoader;
+use august_plugin_system::{PluginLoader, LoaderBuilder};
 
 pub fn loader_init() -> PluginLoader {
-    match PluginLoader::init(vec![NativePluginManager::new()]) {
+	match LoaderBuilder::new().register_manager(NativePluginManager::new()).build() {
         Ok(loader) => loader,
-        Err(e) => panic!("{:?}: {}", e, e.to_string()),
+        Err(e) => {
+            panic!("{:?}: {}", e, e.to_string())
+        }
     }
 }
 

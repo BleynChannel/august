@@ -8,10 +8,10 @@ mod dependency {
 
     fn get_dependencys_path() -> Vec<PathBuf> {
         vec![
-            get_plugin_path("dependency/dep_1"),
-            get_plugin_path("dependency/dep_2"),
-            get_plugin_path("dependency/dep_3"),
-            get_plugin_path("dependency/dep_4"),
+            get_plugin_path("dependency/dep_1", "vpl"),
+            get_plugin_path("dependency/dep_2", "vpl"),
+            get_plugin_path("dependency/dep_3", "vpl"),
+            get_plugin_path("dependency/dep_4", "vpl"),
         ]
     }
 
@@ -59,8 +59,8 @@ mod dependency {
         for plugin in plugins {
             println!(
                 "Path = {:?}, ID = {}",
-                plugin.borrow().get_path(),
-                plugin.borrow().get_info().id
+                plugin.borrow().path(),
+                plugin.borrow().info().id
             );
         }
 

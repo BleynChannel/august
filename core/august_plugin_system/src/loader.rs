@@ -5,130 +5,43 @@ use std::{
 };
 
 use crate::{
+    context::LoadPluginContext,
     utils::{
-        LoadPluginError, RegisterManagerError, RegisterPluginError, StopLoaderError,
+        BuilderError, LoadPluginError, RegisterManagerError, RegisterPluginError, StopLoaderError,
         UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
     },
-    Link, Plugin, PluginManager, WrapperLoader,
+    Link, Requests, Plugin, PluginManager, Registry,
 };
 
 pub struct PluginLoader {
     managers: Vec<Link<Box<dyn PluginManager>>>,
+    registry: Link<Registry>,
+    requests: Link<Requests>,
     plugins: Vec<Link<Plugin>>,
 }
 
 impl PluginLoader {
-    pub fn new() -> Self {
-        Self {
+    pub(crate) fn new(
+        managers: Vec<Box<dyn PluginManager>>,
+        registry: Registry,
+        requests: Requests,
+    ) -> Result<Self, BuilderError> {
+        let mut loader = Self {
             managers: Vec::new(),
+            registry: Rc::new(RefCell::new(registry)),
+            requests: Rc::new(RefCell::new(requests)),
             plugins: Vec::new(),
-        }
-    }
+        };
 
-    pub fn init(managers: Vec<Box<dyn PluginManager>>) -> Result<Self, RegisterManagerError> {
-        let mut loader = Self::new();
-
-        for manager in managers {
-            loader.register_manager(manager)?;
-        }
+        loader.register_managers(managers)?;
 
         Ok(loader)
     }
 
     pub fn stop(&mut self) -> Result<(), StopLoaderError> {
-        self.stop_plugins()?;
-        self.stop_managers()?;
+        PrivateLoader::stop_plugins(self)?;
+        PrivateLoader::stop_managers(self)?;
         Ok(())
-    }
-
-    fn stop_plugins(&mut self) -> Result<(), StopLoaderError> {
-        // Сортируем плагины в порядке их зависимостей
-        let sort_plugins = self.stop_sort_plugins();
-
-        let mut errors = Vec::new();
-
-        // Выгружаем плагины
-        for plugin in sort_plugins.iter() {
-            if let Err(e) = self.unregister_plugin(plugin) {
-                //TODO: Добавить debug вывод
-                errors.push((plugin.borrow().info.id.clone(), e));
-            }
-        }
-
-        if !errors.is_empty() {
-            return Err(StopLoaderError::UnregisterPluginFailed(errors));
-        }
-        Ok(())
-    }
-
-    fn stop_managers(&mut self) -> Result<(), StopLoaderError> {
-        // Открепляем менеджеры плагинов от загрузчика
-        let mut errors = Vec::new();
-        for (index, manager) in self.managers.clone().iter().enumerate() {
-            if let Err(e) = self.unregister_manager(index) {
-                errors.push((manager.borrow().format().to_string(), e));
-            }
-        }
-
-        if !errors.is_empty() {
-            return Err(StopLoaderError::UnregisterManagerFailed(errors));
-        }
-        Ok(())
-    }
-
-    fn stop_sort_pick(&self, plugin: &Link<Plugin>, result: &mut Vec<Link<Plugin>>) {
-        result.push(plugin.clone());
-
-        let plugin_info = &plugin.borrow().info;
-        'outer: for depend in plugin_info
-            .depends
-            .iter()
-            .chain(plugin_info.optional_depends.iter())
-        {
-            if !result.iter().any(|pl| pl.borrow().info.id == *depend) {
-                let mut p: Option<&Link<Plugin>> = None;
-
-                for plug in self.plugins.iter() {
-                    let plug_info = &plug.borrow().info;
-                    if plug_info.id == *depend {
-                        p = Some(plug);
-                        continue;
-                    }
-
-                    if !result.iter().any(|pl| pl.borrow().info.id == plug_info.id)
-                        && (plug_info.depends.contains(depend)
-                            || plug_info.optional_depends.contains(depend))
-                    {
-                        continue 'outer;
-                    }
-                }
-
-                self.stop_sort_pick(p.unwrap(), result);
-            }
-        }
-    }
-
-    // Продвинутая древовидная сортировка
-    fn stop_sort_plugins(&self) -> Vec<Link<Plugin>> {
-        let mut result = vec![];
-
-        'outer: for plugin in self.plugins.iter() {
-            {
-                let plugin_info = &plugin.borrow().info;
-                for pl in self.plugins.iter() {
-                    let pl_info = &pl.borrow().info;
-                    if pl_info.depends.contains(&plugin_info.id)
-                        || pl_info.optional_depends.contains(&plugin_info.id)
-                    {
-                        continue 'outer;
-                    }
-                }
-            }
-
-            self.stop_sort_pick(plugin, &mut result);
-        }
-
-        result
     }
 
     pub fn register_manager(
@@ -145,11 +58,11 @@ impl PluginLoader {
             ));
         }
 
-		let wrapper = WrapperLoader::new(self);
+        let wrapper = self.wrap();
 
         self.managers.push(Rc::new(RefCell::new(manager)));
         let manager = self.managers.last().unwrap();
-		manager.borrow_mut().register_manager(wrapper)?;
+        manager.borrow_mut().register_manager(wrapper)?;
 
         Ok(())
     }
@@ -222,12 +135,11 @@ impl PluginLoader {
                 }
 
                 // Регистрируем плагин
-                self.plugins.push(Rc::new(RefCell::new(Plugin {
-                    manager: manager.clone(),
-                    path: path.clone(),
+                self.plugins.push(Rc::new(RefCell::new(Plugin::new(
+                    manager.clone(),
+                    path.clone(),
                     info,
-                    is_load: false,
-                })));
+                ))));
 
                 return Ok(self.plugins.last().unwrap().clone());
             } else {
@@ -260,47 +172,62 @@ impl PluginLoader {
     }
 
     pub fn load_plugin(&self, plugin: &Link<Plugin>) -> Result<(), LoadPluginError> {
-        {
-            let plugin_ref = plugin.borrow();
+		if plugin.borrow().is_load {
+			return Ok(());
+		}
 
-            if plugin_ref.is_load {
-                return Ok(());
+        // Загружаем зависимости
+		{
+			let mut iter = self.plugins.iter();
+
+			let mut not_found_depends = Vec::new();
+			for depend in &plugin.borrow().info.depends {
+				if let Some(dep) = iter.find(|p| p.borrow().info.id == *depend) {
+					if let Err(e) = self.load_plugin(dep) {
+						return Err(LoadPluginError::LoadDependency {
+							depend: depend.clone(),
+							error: Box::new(e),
+						});
+					}
+				} else {
+					not_found_depends.push(depend.clone());
+				}
+			}
+
+			if !not_found_depends.is_empty() {
+				return Err(LoadPluginError::NotFoundDependencies(not_found_depends));
+			}
+
+			for depend in &plugin.borrow().info.optional_depends {
+				if let Some(dep) = iter.find(|p| p.borrow().info.id == *depend) {
+					if let Err(e) = self.load_plugin(dep) {
+						return Err(LoadPluginError::LoadDependency {
+							depend: depend.clone(),
+							error: Box::new(e),
+						});
+					}
+				}
+			}
+		}
+
+        // Загружаем плагин
+        let manager = plugin.borrow().manager.clone();
+        manager.borrow_mut().load_plugin(LoadPluginContext::new(
+            plugin.clone(),
+            self.registry.clone(),
+            self.requests.clone(),
+        ))?;
+
+        // Проверяем наличие запрашиваемых функций
+        let mut not_found_requests: Vec<String> = Vec::new();
+        for (_, request) in &plugin.borrow().requests {
+            if !self.requests.borrow().iter().any(|o| o.name == request.name) {
+                not_found_requests.push(request.name.to_string());
             }
+        }
 
-            // Загружаем зависимости
-            let mut iter = self.plugins.iter();
-
-            let mut not_found_depends = Vec::new();
-            for depend in &plugin_ref.info.depends {
-                if let Some(dep) = iter.find(|p| p.borrow().info.id == *depend) {
-                    if let Err(e) = self.load_plugin(dep) {
-                        return Err(LoadPluginError::LoadDependency {
-                            depend: depend.clone(),
-                            error: Box::new(e),
-                        });
-                    }
-                } else {
-                    not_found_depends.push(depend.clone());
-                }
-            }
-
-            if !not_found_depends.is_empty() {
-                return Err(LoadPluginError::NotFoundDependencies(not_found_depends));
-            }
-
-            for depend in &plugin_ref.info.optional_depends {
-                if let Some(dep) = iter.find(|p| p.borrow().info.id == *depend) {
-                    if let Err(e) = self.load_plugin(dep) {
-                        return Err(LoadPluginError::LoadDependency {
-                            depend: depend.clone(),
-                            error: Box::new(e),
-                        });
-                    }
-                }
-            }
-
-            // Загружаем плагин
-            plugin_ref.manager.borrow_mut().load_plugin(&*plugin_ref)?;
+        if !not_found_requests.is_empty() {
+            return Err(LoadPluginError::RequestsNotFound(not_found_requests));
         }
 
         plugin.borrow_mut().is_load = true;
@@ -309,38 +236,36 @@ impl PluginLoader {
     }
 
     pub fn unload_plugin(&self, plugin: &Link<Plugin>) -> Result<(), UnloadPluginError> {
-        {
-            let plugin_ref = plugin.borrow();
-            if plugin_ref.is_load {
-                for plug in self.plugins.iter() {
-                    let plug_info = &plug.borrow().info;
+        if plugin.borrow().is_load {
+            for plug in self.plugins.iter() {
+                let plug_info = &plug.borrow().info;
 
-                    if let Some(_) = plug_info
-                        .depends
-                        .iter()
-                        .find(|depend| **depend == plug_info.id)
-                    {
-                        return Err(UnloadPluginError::DependentOnAnotherPlugin(
-                            plug_info.id.clone(),
-                        ));
-                    }
-
-                    if let Some(_) = plug_info
-                        .optional_depends
-                        .iter()
-                        .find(|depend| **depend == plug_info.id)
-                    {
-                        return Err(UnloadPluginError::DependentOnAnotherPlugin(
-                            plug_info.id.clone(),
-                        ));
-                    }
+                if let Some(_) = plug_info
+                    .depends
+                    .iter()
+                    .find(|depend| **depend == plug_info.id)
+                {
+                    return Err(UnloadPluginError::DependentOnAnotherPlugin(
+                        plug_info.id.clone(),
+                    ));
                 }
 
-                plugin_ref
-                    .manager
-                    .borrow_mut()
-                    .unload_plugin(&*plugin_ref)?;
+                if let Some(_) = plug_info
+                    .optional_depends
+                    .iter()
+                    .find(|depend| **depend == plug_info.id)
+                {
+                    return Err(UnloadPluginError::DependentOnAnotherPlugin(
+                        plug_info.id.clone(),
+                    ));
+                }
             }
+
+            plugin
+                .borrow()
+                .manager
+                .borrow_mut()
+                .unload_plugin(&*plugin.borrow())?;
         }
 
         plugin.borrow_mut().is_load = false;
@@ -410,5 +335,103 @@ impl PluginLoader {
 
     pub fn get_plugins(&self) -> Vec<Link<Plugin>> {
         self.plugins.iter().map(|x| x.clone()).collect()
+    }
+}
+
+struct PrivateLoader;
+
+impl PrivateLoader {
+    fn stop_plugins(loader: &mut PluginLoader) -> Result<(), StopLoaderError> {
+        // Сортируем плагины в порядке их зависимостей
+        let sort_plugins = PrivateLoader::stop_sort_plugins(loader);
+
+        let mut errors = Vec::new();
+
+        // Выгружаем плагины
+        for plugin in sort_plugins.iter() {
+            if let Err(e) = loader.unregister_plugin(plugin) {
+                //TODO: Добавить debug вывод
+                errors.push((plugin.borrow().info.id.clone(), e));
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(StopLoaderError::UnregisterPluginFailed(errors));
+        }
+        Ok(())
+    }
+
+    fn stop_managers(loader: &mut PluginLoader) -> Result<(), StopLoaderError> {
+        // Открепляем менеджеры плагинов от загрузчика
+        let mut errors = Vec::new();
+        for (index, manager) in loader.managers.clone().iter().enumerate() {
+            if let Err(e) = loader.unregister_manager(index) {
+                errors.push((manager.borrow().format().to_string(), e));
+            }
+        }
+
+        if !errors.is_empty() {
+            return Err(StopLoaderError::UnregisterManagerFailed(errors));
+        }
+        Ok(())
+    }
+
+    fn stop_sort_pick(
+        loader: &PluginLoader,
+        plugin: &Link<Plugin>,
+        result: &mut Vec<Link<Plugin>>,
+    ) {
+        result.push(plugin.clone());
+
+        let plugin_info = &plugin.borrow().info;
+        'outer: for depend in plugin_info
+            .depends
+            .iter()
+            .chain(plugin_info.optional_depends.iter())
+        {
+            if !result.iter().any(|pl| pl.borrow().info.id == *depend) {
+                let mut p: Option<&Link<Plugin>> = None;
+
+                for plug in loader.plugins.iter() {
+                    let plug_info = &plug.borrow().info;
+                    if plug_info.id == *depend {
+                        p = Some(plug);
+                        continue;
+                    }
+
+                    if !result.iter().any(|pl| pl.borrow().info.id == plug_info.id)
+                        && (plug_info.depends.contains(depend)
+                            || plug_info.optional_depends.contains(depend))
+                    {
+                        continue 'outer;
+                    }
+                }
+
+                PrivateLoader::stop_sort_pick(loader, p.unwrap(), result);
+            }
+        }
+    }
+
+    // Продвинутая древовидная сортировка
+    fn stop_sort_plugins(loader: &PluginLoader) -> Vec<Link<Plugin>> {
+        let mut result = vec![];
+
+        'outer: for plugin in loader.plugins.iter() {
+            {
+                let plugin_info = &plugin.borrow().info;
+                for pl in loader.plugins.iter() {
+                    let pl_info = &pl.borrow().info;
+                    if pl_info.depends.contains(&plugin_info.id)
+                        || pl_info.optional_depends.contains(&plugin_info.id)
+                    {
+                        continue 'outer;
+                    }
+                }
+            }
+
+            PrivateLoader::stop_sort_pick(loader, plugin, &mut result);
+        }
+
+        result
     }
 }

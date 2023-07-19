@@ -7,12 +7,12 @@ pub(crate) fn get_literal_type(field: &Field) -> &TypePath {
     }
 }
 
-pub(crate) fn get_inputs_output_fields(
+pub(crate) fn get_externals_inputs_output_fields(
     fields: &Fields,
-) -> Result<(Vec<(usize, &Field)>, Option<(usize, &Field)>)> {
+) -> Result<(Vec<&Field>, Vec<&Field>, Option<&Field>)> {
     match fields {
-        Fields::Named(fields) => Ok(get_inputs_output_fields_common(&fields.named)),
-        Fields::Unnamed(fields) => Ok(get_inputs_output_fields_common(&fields.unnamed)),
+        Fields::Named(fields) => Ok(get_externals_inputs_output_fields_common(&fields.named)),
+        Fields::Unnamed(fields) => Ok(get_externals_inputs_output_fields_common(&fields.unnamed)),
         Fields::Unit => Err(Error::new_spanned(
             fields,
             "structure can have only named and unnamed fields",
@@ -20,20 +20,25 @@ pub(crate) fn get_inputs_output_fields(
     }
 }
 
-fn get_inputs_output_fields_common(
+fn get_externals_inputs_output_fields_common(
     fields: &Punctuated<Field, Comma>,
-) -> (Vec<(usize, &Field)>, Option<(usize, &Field)>) {
+) -> (Vec<&Field>, Vec<&Field>, Option<&Field>) {
+    let mut externals = Vec::new();
     let mut inputs = Vec::new();
     let mut output = None;
-    for (index, field) in fields.iter().enumerate() {
+    for field in fields.iter() {
         if let Some(attr) = field.attrs.first() {
-            if attr.path().get_ident().unwrap().to_string() == "output" {
-                output = Some((index, field));
+            let attr = attr.path().get_ident().unwrap().to_string();
+            if attr == "output" {
+                output = Some(field);
+                continue;
+            } else if attr == "external" {
+                externals.push(field);
                 continue;
             }
         }
 
-        inputs.push((index, field));
+        inputs.push(field);
     }
-    (inputs, output)
+    (externals, inputs, output)
 }

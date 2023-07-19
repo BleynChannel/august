@@ -12,6 +12,8 @@ thiserror = "1.0.40"
 
 [dev-dependencies]
 toml = "0.7.3"
+codegen = { path = "codegen" }
+rlua = "0.19.7"
 
 [features]
 derive = ["dep:codegen"]
