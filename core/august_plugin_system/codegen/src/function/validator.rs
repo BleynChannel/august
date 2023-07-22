@@ -1,24 +1,9 @@
 use proc_macro2::TokenStream;
 use syn::{
-    Data, DataStruct, DeriveInput, Error, Field, FnArg, GenericArgument, ItemFn, PathArguments,
-    Result, Signature, Type, TypePath,
+    Error, FnArg, GenericArgument, ItemFn, PathArguments, Result, Signature, Type, TypePath,
 };
 
-pub(crate) fn validate(ast: &DeriveInput) -> Result<()> {
-    if !ast.generics.params.is_empty() {
-        return Err(Error::new_spanned(ast, "generics are not supported"));
-    }
-
-    match &ast.data {
-        Data::Struct(ast) => validate_struct(ast),
-        _ => Err(Error::new_spanned(
-            ast,
-            "enum or union as functions are not supported",
-        )),
-    }
-}
-
-pub(crate) fn validate_2(ast: &ItemFn, attr: &TokenStream) -> Result<()> {
+pub(crate) fn validate(ast: &ItemFn, attr: &TokenStream) -> Result<()> {
     if !ast.sig.generics.params.is_empty() {
         return Err(Error::new_spanned(ast, "generics are not supported"));
     }
@@ -113,41 +98,6 @@ where
         }
         ty => validate(ty),
     }
-}
-
-fn validate_struct(ast: &DataStruct) -> Result<()> {
-    match &ast.fields {
-        syn::Fields::Named(fields) => {
-            for field in fields.named.iter() {
-                validate_field(field)?;
-            }
-
-            Ok(())
-        }
-        syn::Fields::Unnamed(fields) => {
-            for field in fields.unnamed.iter() {
-                validate_field(field)?;
-            }
-
-            Ok(())
-        }
-        syn::Fields::Unit => Err(Error::new_spanned(
-            &ast.fields,
-            "structure can have only named and unnamed fields",
-        )),
-    }
-}
-
-fn validate_field(field: &Field) -> Result<()> {
-    // Если есть external и нет output, то проверяем тип
-    let mut attrs = field.attrs.iter();
-    if let Some(_) = attrs.find(|attr| attr.path().is_ident("external")) {
-        if let None = attrs.find(|attr| attr.path().is_ident("output")) {
-            return Ok(());
-        }
-    }
-
-    validate_type(&field.ty)
 }
 
 fn validate_type(ty: &Type) -> Result<()> {

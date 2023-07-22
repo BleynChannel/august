@@ -5,33 +5,25 @@ extern crate codegen;
 #[cfg(test)]
 mod tests {
     use august_plugin_system::{function::Request, variable::VariableType, LoaderBuilder};
-    use codegen::Function;
+    use codegen::function;
 
     use crate::utils::{get_plugin_path, LuaPluginManager, VoidPluginManager};
 
-    #[derive(Function)]
-    struct Add(i32, i32, #[output] i32);
-
-    impl Add {
-        fn call(_: (), (a, b): (i32, i32)) -> i32 {
-            a + b
-        }
+    #[function]
+    fn add(_: (), (a, b): (i32, i32)) -> i32 {
+        a + b
     }
 
-    #[derive(Function)]
-    struct Sub(i32, i32, #[output] i32);
-
-    impl Sub {
-        fn call(_: (), (a, b): (i32, i32)) -> i32 {
-            a - b
-        }
+    #[function]
+    fn sub(_: (), (a, b): (i32, i32)) -> i32 {
+        a - b
     }
 
     #[test]
     fn register_function() {
         let mut loader = match LoaderBuilder::new()
             .register_manager(VoidPluginManager::new())
-            .register_function(Add::as_function())
+            .register_function(add())
             .build()
         {
             Ok(loader) => loader,
@@ -47,7 +39,7 @@ mod tests {
     fn register_functions() {
         let mut loader = match LoaderBuilder::new()
             .register_manager(VoidPluginManager::new())
-            .register_functions(vec![Add::as_function(), Sub::as_function()])
+            .register_functions(vec![add(), sub()])
             .build()
         {
             Ok(loader) => loader,
@@ -108,7 +100,10 @@ mod tests {
             Err((_, _)) => panic!("Unexpected error"),
         };
 
-        match plugin.borrow().call_request("echo", &["Hello world".into()]) {
+        match plugin
+            .borrow()
+            .call_request("echo", &["Hello world".into()])
+        {
             Err(e) => match e.downcast_ref::<rlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),
@@ -124,7 +119,7 @@ mod tests {
     fn common_call() {
         let mut loader = match LoaderBuilder::new()
             .register_manager(LuaPluginManager::new())
-            .register_functions(vec![Add::as_function(), Sub::as_function()])
+            .register_functions(vec![add(), sub()])
             .register_request(Request::new("main".to_string(), vec![], None))
             .build()
         {

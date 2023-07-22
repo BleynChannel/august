@@ -2,11 +2,11 @@ use std::str::FromStr;
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Field, ReturnType, Type, TypePath};
+use syn::{ReturnType, Type, TypePath};
 
 use crate::function::utils::get_literal_type;
 
-pub(crate) fn generate_function_2(
+pub(crate) fn generate_function(
     externals: &Vec<&Type>,
     inputs: &Vec<(String, &Type)>,
     output: &ReturnType,
@@ -62,64 +62,6 @@ fn return_output_2(output: &ReturnType) -> TokenStream {
             quote! { Ok(Some(#result)) }
         }
     }
-}
-
-pub(crate) fn generate_function(
-    externals: &Vec<&Field>,
-    inputs: &Vec<&Field>,
-    output: &Option<&Field>,
-) -> TokenStream {
-    let exts = serialize_exts(externals);
-    let args = serialize_inputs(inputs);
-    let call = function_call(exts, args, output);
-    let output = return_output(output);
-
-    quote! {
-        move |exts, args| ->
-            august_plugin_system::utils::FunctionResult<Option<august_plugin_system::variable::Variable>> {
-            #call
-            #output
-        }
-    }
-}
-
-fn serialize_exts(externals: &Vec<&Field>) -> TokenStream {
-    let exts: Vec<TokenStream> = externals
-        .iter()
-        .enumerate()
-        .map(|(index, _)| {
-            quote! { exts[#index].downcast_ref().ok_or("Failed to downcast")? }
-        })
-        .collect();
-
-    quote! { (#(#exts), *) }
-}
-
-fn serialize_inputs(inputs: &Vec<&Field>) -> TokenStream {
-    let args: Vec<TokenStream> = inputs
-        .iter()
-        .enumerate()
-        .map(|(index, _)| quote! { args[#index].parse()? })
-        .collect();
-
-    quote! { (#(#args), *) }
-}
-
-fn function_call(exts: TokenStream, args: TokenStream, output: &Option<&Field>) -> TokenStream {
-    let output_token = output.map(|output| {
-        let ty = get_literal_type(&output.ty);
-        quote! { let result: #ty = }
-    });
-
-    quote! { #output_token Self::call(#exts, #args); }
-}
-
-fn return_output(output: &Option<&Field>) -> TokenStream {
-    output.map_or(quote! { Ok(None) }, |field| {
-        let result = serialize_output(get_literal_type(&field.ty));
-
-        quote! { Ok(Some(#result)) }
-    })
 }
 
 const VARIABLE_DATAS: [(&str, &str); 13] = [
