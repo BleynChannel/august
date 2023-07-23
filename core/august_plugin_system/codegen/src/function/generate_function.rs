@@ -13,10 +13,10 @@ pub(crate) fn generate_function(
     args: TokenStream,
     block: TokenStream,
 ) -> TokenStream {
-    let exts = serialize_exts_2(externals);
-    let ins = serialize_inputs_2(inputs);
-    let call = function_call_2(exts, ins, output);
-    let out = return_output_2(output);
+    let exts = serialize_exts(externals);
+    let ins = serialize_inputs(inputs);
+    let call = function_call(exts, ins, output);
+    let out = return_output(output);
 
     quote! {
         move |exts, args| -> august_plugin_system::utils::FunctionResult<Option<august_plugin_system::variable::Variable>> {
@@ -27,7 +27,7 @@ pub(crate) fn generate_function(
     }
 }
 
-fn serialize_exts_2(externals: &Vec<&Type>) -> TokenStream {
+fn serialize_exts(externals: &Vec<&Type>) -> TokenStream {
     let exts: Vec<TokenStream> = (0..externals.len())
         .map(|index| {
             quote! { exts[#index].downcast_ref().ok_or("Failed to downcast")? }
@@ -37,7 +37,7 @@ fn serialize_exts_2(externals: &Vec<&Type>) -> TokenStream {
     quote! { (#(#exts), *) }
 }
 
-fn serialize_inputs_2(inputs: &Vec<(String, &Type)>) -> TokenStream {
+fn serialize_inputs(inputs: &Vec<(String, &Type)>) -> TokenStream {
     let args: Vec<TokenStream> = (0..inputs.len())
         .map(|index| quote! { args[#index].parse()? })
         .collect();
@@ -45,7 +45,7 @@ fn serialize_inputs_2(inputs: &Vec<(String, &Type)>) -> TokenStream {
     quote! { (#(#args), *) }
 }
 
-fn function_call_2(exts: TokenStream, args: TokenStream, output: &ReturnType) -> TokenStream {
+fn function_call(exts: TokenStream, args: TokenStream, output: &ReturnType) -> TokenStream {
     let output_token = match output {
         syn::ReturnType::Default => None,
         syn::ReturnType::Type(_, _) => Some(quote! { let result = }),
@@ -54,7 +54,7 @@ fn function_call_2(exts: TokenStream, args: TokenStream, output: &ReturnType) ->
     quote! { #output_token func(#exts, #args); }
 }
 
-fn return_output_2(output: &ReturnType) -> TokenStream {
+fn return_output(output: &ReturnType) -> TokenStream {
     match output {
         syn::ReturnType::Default => quote! { Ok(None) },
         syn::ReturnType::Type(_, ty) => {
