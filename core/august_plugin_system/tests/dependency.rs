@@ -34,8 +34,7 @@ mod dependency {
             loader.register_plugin(path.to_str().unwrap()).unwrap();
         }
 
-        let plugin = loader.get_plugin(2).unwrap();
-        loader.load_plugin(&plugin).unwrap();
+        loader.load_plugin(&"dep_3".to_string()).unwrap();
 
         loader.stop().unwrap();
     }
@@ -44,24 +43,17 @@ mod dependency {
     fn load_plugins() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let plugins = match loader.load_plugins(
-            get_dependencys_path()
-                .iter()
-                .map(|x| x.to_str().unwrap())
-                .collect(),
-        ) {
-            Ok(plugins) => plugins,
-            Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
-            Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
-            Err((_, _)) => panic!("Unexpected error"),
-        };
+        let plugins =
+            match loader.load_plugins(get_dependencys_path().iter().map(|x| x.to_str().unwrap())) {
+                Ok(plugins) => plugins,
+                Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
+                Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
+                Err((_, _)) => panic!("Unexpected error"),
+            };
 
-        for plugin in plugins {
-            println!(
-                "Path = {:?}, ID = {}",
-                plugin.borrow().path(),
-                plugin.borrow().info().id
-            );
+        for plugin_id in plugins {
+            let plugin = loader.get_plugin(&plugin_id).unwrap();
+            println!("Path = {:?}, ID = {}", plugin.path(), plugin.info().id);
         }
 
         loader.stop().unwrap();

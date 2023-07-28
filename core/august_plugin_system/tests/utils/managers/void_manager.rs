@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use august_plugin_system::{
-    utils::FunctionResult, Plugin, PluginInfo, PluginManager, WrapperLoader, context::LoadPluginContext,
+    context::LoadPluginContext,
+    utils::{FunctionResult, Ptr},
+    Loader, Manager, Plugin, PluginInfo,
 };
 
 use crate::utils::native_config::{load_config, NativeConfig};
@@ -10,12 +12,12 @@ pub struct VoidPluginManager {
     configs: Vec<NativeConfig>,
 }
 
-impl PluginManager for VoidPluginManager {
+impl<'a> Manager<'a> for VoidPluginManager {
     fn format(&self) -> &str {
         "vpl"
     }
 
-    fn register_manager(&mut self, _: WrapperLoader) -> FunctionResult<()> {
+    fn register_manager(&mut self, _: Ptr<'a, Loader<'a>>) -> FunctionResult<()> {
         println!("VoidPluginManager::register_manager");
         Ok(())
     }
@@ -33,15 +35,12 @@ impl PluginManager for VoidPluginManager {
         Ok(info)
     }
 
-    fn unregister_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
-        println!(
-            "VoidPluginManager::unregister_plugin - {:?}",
-            plugin.path()
-        );
+    fn unregister_plugin(&mut self, plugin: Ptr<'a, Plugin>) -> FunctionResult<()> {
+        println!("VoidPluginManager::unregister_plugin - {:?}", plugin.as_ref().path());
         Ok(())
     }
 
-    fn register_plugin_error(&mut self, info: &PluginInfo) {
+    fn register_plugin_error(&mut self, info: PluginInfo) {
         if let Some(index) = self.configs.iter().enumerate().find_map(|(index, config)| {
             if config.id == info.id {
                 return Some(index);
@@ -62,19 +61,14 @@ impl PluginManager for VoidPluginManager {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
-        println!(
-            "VoidPluginManager::unload_plugin - {:?}",
-            plugin.info().id
-        );
+    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin>) -> FunctionResult<()> {
+        println!("VoidPluginManager::unload_plugin - {:?}", plugin.as_ref().info().id);
         Ok(())
     }
 }
 
 impl VoidPluginManager {
-    pub fn new() -> Box<Self> {
-        Box::new(Self {
-            configs: Vec::new(),
-        })
+    pub fn new() -> Self {
+        Self { configs: vec![] }
     }
 }

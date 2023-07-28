@@ -8,11 +8,11 @@ pub struct PluginInfo {
 }
 
 impl PluginInfo {
-    pub fn new(id: String) -> Self {
+    pub const fn new(id: String) -> Self {
         Self {
             id,
-            depends: Vec::new(),
-            optional_depends: Vec::new(),
+            depends: vec![],
+            optional_depends: vec![],
         }
     }
 }

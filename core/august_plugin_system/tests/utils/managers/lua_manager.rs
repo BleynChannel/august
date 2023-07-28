@@ -1,19 +1,24 @@
-use std::{collections::HashMap, path::PathBuf, rc::Rc, vec};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    vec,
+};
 
 use august_plugin_system::{
     context::LoadPluginContext,
     function::{Arg, Function},
-    utils::FunctionResult,
+    utils::{FunctionResult, Ptr},
     variable::Variable,
-    Requests, Plugin, PluginInfo, PluginManager, Registry,
+    Manager, Plugin, PluginInfo, Registry, Requests,
 };
 use rlua::{Context, Lua, MultiValue, ToLua, Value};
 
 pub struct LuaPluginManager {
-    lua_refs: HashMap<String, Rc<Lua>>,
+    lua_refs: HashMap<String, Arc<Mutex<Lua>>>,
 }
 
-impl PluginManager for LuaPluginManager {
+impl<'a> Manager<'a> for LuaPluginManager {
     fn format(&self) -> &str {
         "fpl"
     }
@@ -34,48 +39,48 @@ impl PluginManager for LuaPluginManager {
         Ok(info)
     }
 
-    fn load_plugin(&mut self, mut context: LoadPluginContext) -> FunctionResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext) -> FunctionResult<()> {
         let id = context.plugin().info().id.clone();
 
         println!("FunctionPluginManager::load_plugin - {:?}", id.clone());
 
-        self.lua_refs.insert(id.clone(), Rc::new(Lua::new()));
-        let lua = self.lua_refs.get(&id).unwrap();
-
-        let mut requests = vec![];
-
-        lua.context(|lua_context| -> FunctionResult<()> {
-            let context = context.clone();
-
+        let lua = Lua::new();
+        let (mut context, requests) = lua.context(|lua_context| -> FunctionResult<_> {
             self.registry_to_lua(lua_context, &*context.registry())?;
-            self.load_src(lua_context, context.plugin().path())?;
+            self.load_src(lua_context, context.plugin().path().clone())?;
 
-            requests = self.register_requests(lua_context, &*context.requests())?;
-            Ok(())
+            let requests = self.register_requests(lua_context, &*context.requests())?;
+
+            Ok((context, requests))
         })?;
 
+        self.lua_refs.insert(id.clone(), Arc::new(Mutex::new(lua)));
+        let lua_ref = self.lua_refs.get(&id).unwrap();
+
         for request in requests {
-            context.register_request(request, vec![Box::new(lua.clone())])?;
+            let lua = lua_ref.clone();
+            context.register_request(request, vec![Box::new(lua)])?;
         }
 
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
+    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin>) -> FunctionResult<()> {
         println!(
             "FunctionPluginManager::unload_plugin - {:?}",
-            plugin.info().id
+            plugin.as_ref().info().id
         );
 
-        Ok(drop(self.lua_refs.remove(&plugin.info().id)))
+        Ok(drop(self.lua_refs.remove(&plugin.as_ref().info().id)))
     }
 }
 
 impl LuaPluginManager {
-    pub fn new() -> Box<Self> {
-        Box::new(Self {
+	#[allow(dead_code)]
+    pub fn new() -> Self {
+        Self {
             lua_refs: HashMap::new(),
-        })
+        }
     }
 
     // Добавление функций из реестра
@@ -144,8 +149,9 @@ impl LuaPluginManager {
                         move |exts, args| {
                             let request_name = request_name.clone();
 
-                            let lua = exts[0].downcast_ref::<Rc<Lua>>().unwrap();
-                            Ok(lua.context(move |ctx| -> FunctionResult<Option<Variable>> {
+                            let arc_lua = exts[0].downcast_ref::<Arc<Mutex<Lua>>>().unwrap();
+                            let lua = arc_lua.lock().map_err(|e| e.to_string())?;
+                            Ok(lua.context(move |ctx| -> FunctionResult<_> {
                                 let mut lua_args = vec![];
                                 for arg in args {
                                     lua_args.push(Self::august2lua(arg, ctx)?);

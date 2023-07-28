@@ -1,19 +1,22 @@
-use std::{cell::Ref, any::Any};
+use std::any::Any;
 
-use crate::{function::Function, utils::RegisterRequestError, Link, Requests, Plugin, Registry};
+use crate::{
+    function::Function,
+    utils::{Ptr, RegisterRequestError},
+    Plugin, Registry, Requests,
+};
 
-#[derive(Clone)]
-pub struct LoadPluginContext {
-    pub(crate) plugin: Link<Plugin>,
-    pub(crate) registry: Link<Registry>,
-    pub(crate) requests: Link<Requests>,
+pub struct LoadPluginContext<'a> {
+    pub(crate) plugin: Ptr<'a, Plugin<'a>>,
+    pub(crate) registry: Ptr<'a, Registry>,
+    pub(crate) requests: Ptr<'a, Requests>,
 }
 
-impl LoadPluginContext {
-    pub(crate) fn new(
-        plugin: Link<Plugin>,
-        registry: Link<Registry>,
-        requests: Link<Requests>,
+impl<'a> LoadPluginContext<'a> {
+    pub(crate) const fn new(
+        plugin: Ptr<'a, Plugin<'a>>,
+        registry: Ptr<'a, Registry>,
+        requests: Ptr<'a, Requests>,
     ) -> Self {
         Self {
             plugin,
@@ -22,23 +25,27 @@ impl LoadPluginContext {
         }
     }
 
-    pub fn plugin(&self) -> Ref<'_, Plugin> {
-        self.plugin.borrow()
+    pub fn plugin(&self) -> &Plugin<'a> {
+        self.plugin.as_ref()
     }
 
-    pub fn registry(&self) -> Ref<'_, Registry> {
-        self.registry.borrow()
+    pub fn registry(&self) -> &Registry {
+        self.registry.as_ref()
     }
 
-    pub fn requests(&self) -> Ref<'_, Requests> {
-        self.requests.borrow()
+    pub fn requests(&self) -> &Requests {
+        self.requests.as_ref()
     }
 
-    pub fn register_request(&mut self, request: Function, externals: Vec<Box<dyn Any>>) -> Result<(), RegisterRequestError> {		
-		{
+    pub fn register_request(
+        &mut self,
+        request: Function,
+        externals: Vec<Box<dyn Any>>,
+    ) -> Result<(), RegisterRequestError> {
+        {
             if let Some(ord) = self
                 .requests
-                .borrow()
+                .as_ref()
                 .iter()
                 .find(|ord| ord.name == request.name)
             {
@@ -51,15 +58,15 @@ impl LoadPluginContext {
                 }
 
                 if ord.output != request.output.as_ref().map(|arg| arg.ty) {
-					return Err(RegisterRequestError::ArgumentsIncorrectly);
-				}
+                    return Err(RegisterRequestError::ArgumentsIncorrectly);
+                }
             } else {
                 return Err(RegisterRequestError::NotFound);
             }
         }
 
-        self.plugin.borrow_mut().requests.push((externals, request));
+        self.plugin.as_mut().requests.push((externals, request));
 
-		Ok(())
+        Ok(())
     }
 }

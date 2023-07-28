@@ -289,7 +289,7 @@ where
     fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
         match var {
             Variable::List(x) => {
-                let mut arr = Vec::new();
+                let mut arr = vec![];
                 for var in x.iter() {
                     arr.push(var.parse::<T>()?);
                 }

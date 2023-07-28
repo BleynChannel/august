@@ -8,7 +8,7 @@ mod tests {
     fn get_plugin_manager() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let is_manager = loader.get_manager(0).is_some();
+        let is_manager = loader.get_manager_ref("vpl").is_some();
 
         loader.stop().unwrap();
 
@@ -19,15 +19,14 @@ mod tests {
     fn register_plugin() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let plugin = loader
+        let plugin_id = loader
             .register_plugin(get_plugin_path("void_plugin", "vpl").to_str().unwrap())
             .unwrap();
-        {
-            let pl = plugin.borrow();
-            println!("Path = {:?}, ID = {}", pl.path(), pl.info().id);
-        }
 
-        loader.unregister_plugin(&plugin).unwrap();
+        let plugin = loader.get_plugin(&plugin_id).unwrap();
+        println!("Path = {:?}, ID = {}", plugin.path(), plugin.info().id);
+
+        loader.unregister_plugin(&plugin_id).unwrap();
         loader.stop().unwrap();
     }
 
@@ -35,12 +34,12 @@ mod tests {
     fn load_plugin() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let plugin = loader
+        let plugin_id = loader
             .register_plugin(get_plugin_path("void_plugin", "vpl").to_str().unwrap())
             .unwrap();
 
-        loader.load_plugin(&plugin).unwrap();
-        loader.unload_plugin(&plugin).unwrap();
+        loader.load_plugin(&plugin_id).unwrap();
+        loader.unload_plugin(&plugin_id).unwrap();
 
         loader.stop().unwrap();
     }
@@ -49,7 +48,7 @@ mod tests {
     fn load_now_plugin() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let plugin =
+        let plugin_id =
             match loader.load_plugin_now(get_plugin_path("void_plugin", "vpl").to_str().unwrap()) {
                 Ok(plugin) => plugin,
                 Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
@@ -57,7 +56,7 @@ mod tests {
                 Err((_, _)) => panic!("Unexpected error"),
             };
 
-        loader.unload_plugin(&plugin).unwrap();
+        loader.unload_plugin(&plugin_id).unwrap();
         loader.stop().unwrap();
     }
 }

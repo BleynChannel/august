@@ -1,11 +1,15 @@
 use std::path::PathBuf;
 
-use crate::{utils::FunctionResult, Plugin, PluginInfo, WrapperLoader, context::LoadPluginContext};
+use crate::{
+    context::LoadPluginContext,
+    utils::{FunctionResult, Ptr},
+    Loader, Plugin, PluginInfo,
+};
 
-pub trait PluginManager {
+pub trait Manager<'a>: Send + Sync {
     fn format(&self) -> &str;
 
-    fn register_manager(&mut self, loader: WrapperLoader) -> FunctionResult<()> {
+    fn register_manager(&mut self, _loader: Ptr<'a, Loader<'a>>) -> FunctionResult<()> {
         Ok(())
     }
 
@@ -18,23 +22,27 @@ pub trait PluginManager {
             path.file_name().unwrap().to_str().unwrap().to_string(),
         ))
     }
-    fn unregister_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
+    fn unregister_plugin(&mut self, _plugin: Ptr<'a, Plugin>) -> FunctionResult<()> {
         Ok(())
     }
 
-    fn register_plugin_error(&mut self, info: &PluginInfo) {}
+    fn register_plugin_error(&mut self, _info: PluginInfo) {}
 
-    fn load_plugin(&mut self, context: LoadPluginContext) -> FunctionResult<()> {
+    fn load_plugin(&mut self, _context: LoadPluginContext) -> FunctionResult<()> {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: &Plugin) -> FunctionResult<()> {
+    fn unload_plugin(&mut self, _plugin: Ptr<'a, Plugin>) -> FunctionResult<()> {
         Ok(())
     }
 }
 
-impl PartialEq for dyn PluginManager {
+impl<'a> PartialEq for dyn Manager<'a> {
     fn eq(&self, other: &Self) -> bool {
         self.format() == other.format()
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.format() != other.format()
     }
 }

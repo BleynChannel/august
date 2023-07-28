@@ -5,6 +5,7 @@ use crate::NativeConfig;
 
 pub struct Plugin {
     pub(crate) info: PluginInfo,
+	#[allow(dead_code)]
     pub(crate) config: NativeConfig,
     pub(crate) library: Option<Library>,
 }

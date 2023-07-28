@@ -1,3 +1,4 @@
+#[allow(unused_macros)]
 macro_rules! function_call {
 	($function: ident, ($($exts:expr), +), ($($args:expr), +)) => {
 		$function.call(&[&$($exts), +], &[$($args.into()), +])

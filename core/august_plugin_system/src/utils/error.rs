@@ -5,17 +5,11 @@ use std::{
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum BuilderError {
-	#[error("Register manager error")]
-	RegisterManagerError(#[from] RegisterManagerError)
-}
-
-#[derive(Error, Debug)]
 pub enum StopLoaderError {
     #[error("Failed to unregister plugins `{0:?}`")]
     UnregisterPluginFailed(Vec<(String, UnregisterPluginError)>),
     #[error("Failed to unregister managers `{0:?}`")]
-    UnregisterManagerFailed(Vec<(String, UnregisterManagerError)>),
+    UnregisterManagerFailed(Vec<UnregisterManagerError>),
 }
 
 #[derive(Error, Debug)]
@@ -62,6 +56,8 @@ pub enum UnregisterPluginError {
 
 #[derive(Error, Debug)]
 pub enum LoadPluginError {
+    #[error("Not found plugin")]
+    NotFound,
     #[error("The following dependencies could not be found: {0:?}")]
     NotFoundDependencies(Vec<String>),
     #[error("Dependency `{depend:?}` returned an error: {error:?}")]
@@ -71,12 +67,14 @@ pub enum LoadPluginError {
     },
     #[error("Plugin load error by the manager")]
     LoadPluginByManager(#[from] Box<dyn StdError>),
-	#[error("Requests not found: {0:?}")]
-	RequestsNotFound(Vec<String>)
+    #[error("Requests not found: {0:?}")]
+    RequestsNotFound(Vec<String>),
 }
 
 #[derive(Error, Debug)]
 pub enum UnloadPluginError {
+    #[error("Not found plugin")]
+    NotFound,
     #[error("The plugin is dependent on plugin `{0}`")]
     DependentOnAnotherPlugin(String),
     #[error("Plugin unload error by the manager")]
@@ -85,10 +83,10 @@ pub enum UnloadPluginError {
 
 #[derive(Error, Debug)]
 pub enum RegisterRequestError {
-	#[error("Function not found")]
-	NotFound,
-	#[error("The arguments are set incorrectly")]
-	ArgumentsIncorrectly,
+    #[error("Function not found")]
+    NotFound,
+    #[error("The arguments are set incorrectly")]
+    ArgumentsIncorrectly,
 }
 
 pub type FunctionResult<T> = Result<T, Box<dyn std::error::Error>>;

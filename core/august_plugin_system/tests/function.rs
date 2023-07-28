@@ -4,7 +4,7 @@ extern crate codegen;
 
 #[cfg(test)]
 mod tests {
-    use august_plugin_system::{function::Request, variable::VariableType, LoaderBuilder};
+    use august_plugin_system::{function::Request, variable::VariableType, Loader};
     use codegen::function;
 
     use crate::utils::{get_plugin_path, LuaPluginManager, VoidPluginManager};
@@ -21,13 +21,12 @@ mod tests {
 
     #[test]
     fn register_function() {
-        let mut loader = match LoaderBuilder::new()
-            .register_manager(VoidPluginManager::new())
-            .register_function(add())
-            .build()
-        {
-            Ok(loader) => loader,
-            Err(e) => panic!("{:?}: {}", e, e.to_string()),
+        let mut loader = Loader::new();
+        if let Err(e) = loader.context(move |mut ctx| {
+            ctx.register_function(add());
+            ctx.register_manager(VoidPluginManager::new())
+        }) {
+            panic!("{:?}: {}", e, e.to_string())
         };
 
         if let Err(e) = loader.stop() {
@@ -37,13 +36,12 @@ mod tests {
 
     #[test]
     fn register_functions() {
-        let mut loader = match LoaderBuilder::new()
-            .register_manager(VoidPluginManager::new())
-            .register_functions(vec![add(), sub()])
-            .build()
-        {
-            Ok(loader) => loader,
-            Err(e) => panic!("{:?}: {}", e, e.to_string()),
+        let mut loader = Loader::new();
+        if let Err(e) = loader.context(move |mut ctx| {
+            ctx.register_functions(vec![add(), sub()]);
+            ctx.register_manager(VoidPluginManager::new())
+        }) {
+            panic!("{:?}: {}", e, e.to_string())
         };
 
         if let Err(e) = loader.stop() {
@@ -53,21 +51,20 @@ mod tests {
 
     #[test]
     fn register_request() {
-        let mut loader = match LoaderBuilder::new()
-            .register_manager(LuaPluginManager::new())
-            .register_request(Request::new(
+        let mut loader = Loader::new();
+        if let Err(e) = loader.context(move |mut ctx| {
+            ctx.register_request(Request::new(
                 "mul".to_string(),
                 vec![VariableType::I32, VariableType::I32],
                 Some(VariableType::I32),
-            ))
-            .build()
-        {
-            Ok(loader) => loader,
-            Err(e) => panic!("{:?}: {}", e, e.to_string()),
+            ));
+            ctx.register_manager(LuaPluginManager::new())
+        }) {
+            panic!("{:?}: {}", e, e.to_string())
         };
 
         match loader.load_plugin_now(get_plugin_path("function_plugin", "fpl").to_str().unwrap()) {
-            Ok(plugin) => plugin,
+            Ok(_) => (),
             Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, _)) => panic!("Unexpected error"),
@@ -78,32 +75,28 @@ mod tests {
 
     #[test]
     fn call_request() {
-        let mut loader = match LoaderBuilder::new()
-            .register_manager(LuaPluginManager::new())
-            .register_request(Request::new(
+        let mut loader = Loader::new();
+        if let Err(e) = loader.context(move |mut ctx| {
+            ctx.register_request(Request::new(
                 "echo".to_string(),
                 vec![VariableType::String],
                 Some(VariableType::String),
-            ))
-            .build()
-        {
-            Ok(loader) => loader,
-            Err(e) => panic!("{:?}: {}", e, e.to_string()),
+            ));
+            ctx.register_manager(LuaPluginManager::new())
+        }) {
+            panic!("{:?}: {}", e, e.to_string())
         };
 
         let plugin = match loader
             .load_plugin_now(get_plugin_path("function_plugin", "fpl").to_str().unwrap())
         {
-            Ok(plugin) => plugin,
+            Ok(plugin_id) => loader.get_plugin(&plugin_id).unwrap(),
             Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, _)) => panic!("Unexpected error"),
         };
 
-        match plugin
-            .borrow()
-            .call_request("echo", &["Hello world".into()])
-        {
+        match plugin.call_request("echo", &["Hello world".into()]) {
             Err(e) => match e.downcast_ref::<rlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),
@@ -117,26 +110,25 @@ mod tests {
 
     #[test]
     fn common_call() {
-        let mut loader = match LoaderBuilder::new()
-            .register_manager(LuaPluginManager::new())
-            .register_functions(vec![add(), sub()])
-            .register_request(Request::new("main".to_string(), vec![], None))
-            .build()
-        {
-            Ok(loader) => loader,
-            Err(e) => panic!("{:?}: {}", e, e.to_string()),
+        let mut loader = Loader::new();
+        if let Err(e) = loader.context(move |mut ctx| {
+            ctx.register_functions(vec![add(), sub()]);
+            ctx.register_request(Request::new("main".to_string(), vec![], None));
+            ctx.register_manager(LuaPluginManager::new())
+        }) {
+            panic!("{:?}: {}", e, e.to_string())
         };
 
         let plugin = match loader
             .load_plugin_now(get_plugin_path("function_plugin", "fpl").to_str().unwrap())
         {
-            Ok(plugin) => plugin,
+            Ok(plugin_id) => loader.get_plugin(&plugin_id).unwrap(),
             Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, _)) => panic!("Unexpected error"),
         };
 
-        match plugin.borrow().call_request("main", &[]) {
+        match plugin.call_request("main", &[]) {
             Err(e) => match e.downcast_ref::<rlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),

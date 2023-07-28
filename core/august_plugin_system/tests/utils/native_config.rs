@@ -34,11 +34,11 @@ pub fn load_config(plugin_path: &PathBuf) -> FunctionResult<(NativeConfig, Plugi
     //Заполняем информацию про плагин
     let info = PluginInfo {
         id: config.id.clone(),
-        depends: config.depends.clone().map_or(Vec::new(), |v| v.clone()),
+        depends: config.depends.clone().map_or(vec![], |v| v.clone()),
         optional_depends: config
             .optional_depends
             .clone()
-            .map_or(Vec::new(), |v| v.clone()),
+            .map_or(vec![], |v| v.clone()),
     };
 
     Ok((config, info))

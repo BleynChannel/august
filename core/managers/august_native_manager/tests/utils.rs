@@ -1,19 +1,19 @@
 use std::path::PathBuf;
 
 use august_native_manager::NativePluginManager;
-use august_plugin_system::{PluginLoader, LoaderBuilder};
+use august_plugin_system::Loader;
 
-pub fn loader_init() -> PluginLoader {
-	match LoaderBuilder::new().register_manager(NativePluginManager::new()).build() {
-        Ok(loader) => loader,
-        Err(e) => {
-            panic!("{:?}: {}", e, e.to_string())
-        }
-    }
+pub fn loader_init<'a>() -> Loader<'a> {
+    let mut loader = Loader::new();
+    if let Err(e) = loader.context(move |mut ctx| ctx.register_manager(NativePluginManager::new()))
+    {
+        panic!("{:?}: {}", e, e.to_string())
+    };
+    loader
 }
 
 pub fn get_plugin_path(name: &str) -> PathBuf {
-	std::env::current_dir()
+    std::env::current_dir()
         .unwrap()
         .join(format!("../../../plugins/{name}/build/plugin.npl"))
 }

@@ -69,7 +69,7 @@ fn generate_description(description: Option<&String>, or: &String) -> Result<Tok
 }
 
 fn generate_inputs(inputs: &Vec<(String, &Type)>) -> Result<TokenStream> {
-    let mut result = Vec::new();
+    let mut result = vec![];
 
     for (name, ty) in inputs {
         result.push(generate_arg(name, *ty)?);
