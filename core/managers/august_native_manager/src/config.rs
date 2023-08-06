@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use august_plugin_system::utils::FunctionResult;
+use august_plugin_system::utils::ManagerResult;
 use serde::{Deserialize, Serialize};
 
 use crate::error::RegisterPluginError;
@@ -18,7 +18,7 @@ pub struct NativeConfig {
 }
 
 impl NativeConfig {
-    pub fn load(plugin_path: &PathBuf) -> FunctionResult<NativeConfig> {
+    pub fn load(plugin_path: &PathBuf) -> ManagerResult<NativeConfig> {
         let config_path = plugin_path.join("config.toml");
         if !config_path.exists() {
             return Err(Box::new(RegisterPluginError::DoesNotContainConfig));

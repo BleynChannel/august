@@ -3,8 +3,8 @@ use std::{env::consts::OS, path::PathBuf};
 use crate::{config::NativeConfig, Plugin};
 use august_plugin_system::{
     context::LoadPluginContext,
-    utils::{FunctionResult, Ptr},
-    Loader, Manager, Plugin as StdPlugin, PluginInfo,
+    utils::{ManagerResult, Ptr},
+    Loader, Manager, Plugin as StdPlugin, PluginInfo, function::Function,
 };
 use libloading::Library;
 
@@ -29,19 +29,19 @@ impl NativePluginManager {
     }
 }
 
-impl<'a> Manager<'a> for NativePluginManager {
+impl<'a, F: Function> Manager<'a, F> for NativePluginManager {
     fn format(&self) -> &str {
         "npl"
     }
 
-    fn register_manager(&mut self, _: Ptr<'a, Loader<'a>>) -> FunctionResult<()> {
+    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, F>>) -> ManagerResult<()> {
         Ok(())
     }
-    fn unregister_manager(&mut self) -> FunctionResult<()> {
+    fn unregister_manager(&mut self) -> ManagerResult<()> {
         Ok(())
     }
 
-    fn register_plugin(&mut self, path: &PathBuf) -> FunctionResult<PluginInfo> {
+    fn register_plugin(&mut self, path: &PathBuf) -> ManagerResult<PluginInfo> {
         let config = NativeConfig::load(path)?;
         let info = PluginInfo {
             id: config.id.clone(),
@@ -55,7 +55,7 @@ impl<'a> Manager<'a> for NativePluginManager {
         self.plugins.push(Plugin::new(info.clone(), config));
         Ok(info)
     }
-    fn unregister_plugin(&mut self, plugin: Ptr<'a, StdPlugin>) -> FunctionResult<()> {
+    fn unregister_plugin(&mut self, plugin: Ptr<'a, StdPlugin<'a, F>>) -> ManagerResult<()> {
         self.remove_plugin(&plugin.as_ref().info());
         Ok(())
     }
@@ -64,7 +64,7 @@ impl<'a> Manager<'a> for NativePluginManager {
         self.remove_plugin(&info);
     }
 
-    fn load_plugin(&mut self, context: LoadPluginContext) -> FunctionResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext<'a, F>) -> ManagerResult<()> {
         let plugin = context.plugin();
 
         // Загрузка библиотеки
@@ -94,7 +94,7 @@ impl<'a> Manager<'a> for NativePluginManager {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: Ptr<'a, StdPlugin>) -> FunctionResult<()> {
+    fn unload_plugin(&mut self, plugin: Ptr<'a, StdPlugin<'a, F>>) -> ManagerResult<()> {
         let info = plugin.as_ref().info();
         self.plugins
             .iter_mut()

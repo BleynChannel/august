@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use august_plugin_system::{utils::FunctionResult, PluginInfo};
+use august_plugin_system::{utils::ManagerResult, PluginInfo};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -21,7 +21,7 @@ pub enum RegisterPluginError {
     DoesNotContainConfig,
 }
 
-pub fn load_config(plugin_path: &PathBuf) -> FunctionResult<(NativeConfig, PluginInfo)> {
+pub fn load_config(plugin_path: &PathBuf) -> ManagerResult<(NativeConfig, PluginInfo)> {
     // Получаем конфигурацию плагина
     let config_path = plugin_path.join("config.toml");
     if !config_path.exists() {

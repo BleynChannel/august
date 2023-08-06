@@ -1,48 +1,61 @@
-use syn::{punctuated::Punctuated, token::Comma, FnArg, Pat, Result, Type, TypePath};
+use std::collections::HashMap;
+
+use proc_macro2::{Ident, Span, TokenStream};
+use quote::format_ident;
+use syn::{FnArg, Pat, Type, TypePath};
 
 pub(crate) fn get_literal_type(ty: &Type) -> &TypePath {
     match ty {
-        Type::Path(ty) => ty,
+        Type::Path(path) => path,
+        Type::Reference(r) => match &*r.elem {
+            Type::Path(path) => path,
+            _ => panic!("Wrong type"),
+        },
         _ => panic!("Wrong type"),
     }
 }
 
-pub(crate) fn get_externals_inputs(
-    args: &Punctuated<FnArg, Comma>,
-) -> Result<(Vec<&Type>, Vec<(String, &Type)>)> {
-    let exts = match args[0] {
-        FnArg::Receiver(_) => panic!("Receiver is not supported"),
-        FnArg::Typed(ref pat) => match pat.ty.as_ref() {
-            Type::Tuple(ty) => ty.elems.iter().collect(),
-            ty => vec![ty],
-        },
-    };
+pub(crate) fn get_attributes(attr: &TokenStream) -> HashMap<String, String> {
+    let attrs_str = attr.to_string();
+    match attrs_str.is_empty() {
+        true => HashMap::new(),
+        false => attrs_str
+            .split(',')
+            .map(|attr| {
+                let attr: Vec<&str> = attr.split('=').map(|token| token.trim()).collect();
+                (attr[0].to_string(), attr[1].trim_matches('"').to_string())
+            })
+            .collect(),
+    }
+}
 
-    let inputs = match args[1] {
+pub(crate) fn get_externals(arg: &FnArg) -> Vec<(Ident, &Type)> {
+    match arg {
         FnArg::Receiver(_) => panic!("Receiver is not supported"),
-        FnArg::Typed(ref pat) => match pat.ty.as_ref() {
-            Type::Tuple(ty) => match pat.pat.as_ref() {
-                Pat::Tuple(pat) => pat
-                    .elems
-                    .iter()
-                    .scan(0, |acc, pat| {
-                        Some(match pat_to_string(pat) {
-                            Some(str) => str,
-                            None => {
-                                *acc += 1;
-                                format!("arg_{acc}")
-                            }
-                        })
-                    })
-                    .zip(ty.elems.iter())
-                    .collect(),
-                _ => panic!("Wrong type"),
-            },
-            ty => vec![(pat_to_string(&*pat.pat).unwrap_or("arg".to_string()), ty)],
+        FnArg::Typed(pat) => match &*pat.ty {
+            Type::Tuple(tuple) => tuple
+                .elems
+                .iter()
+                .enumerate()
+                .map(|(index, ty)| (format_ident!("ext_{}", index), ty))
+                .collect(),
+            ty => vec![(Ident::new("ext_0", Span::call_site()), ty)],
         },
-    };
+    }
+}
 
-    Ok((exts, inputs))
+pub(crate) fn get_inputs<'a, I>(args: I) -> Vec<(String, &'a Type)>
+where
+    I: Iterator<Item = &'a FnArg>,
+{
+    args.map(|arg| match arg {
+        FnArg::Receiver(_) => panic!("Receiver is not supported"),
+        FnArg::Typed(pat) => (
+            pat_to_string(&*pat.pat).unwrap_or("arg".to_string()),
+            pat.ty.as_ref(),
+        ),
+    })
+    .collect()
 }
 
 fn pat_to_string(pat: &Pat) -> Option<String> {
@@ -59,6 +72,31 @@ fn pat_to_string(pat: &Pat) -> Option<String> {
         Pat::Rest(_) => None,
         Pat::Type(pat) => pat_to_string(&pat.pat),
         Pat::Wild(_) => None,
+        _ => panic!("Wrong type"),
+    }
+}
+
+pub(crate) fn clear_ref(ty: &Type) -> Type {
+    match ty {
+        Type::Path(path) => {
+            let mut path = path.clone();
+            match &mut path.path.segments.last_mut().unwrap().arguments {
+                syn::PathArguments::AngleBracketed(args) => {
+                    args.args.iter_mut().for_each(|arg| match arg {
+                        syn::GenericArgument::Type(ty) => {
+                            *arg = syn::GenericArgument::Type(clear_ref(ty))
+                        }
+                        _ => panic!("Wrong type"),
+                    });
+                }
+                _ => panic!("Wrong type"),
+            }
+            Type::Path(path)
+        }
+        Type::Reference(r) => match &*r.elem {
+            Type::Path(path) => Type::Path(path.clone()),
+            _ => panic!("Wrong type"),
+        },
         _ => panic!("Wrong type"),
     }
 }

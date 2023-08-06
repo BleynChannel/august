@@ -89,7 +89,13 @@ pub enum RegisterRequestError {
     ArgumentsIncorrectly,
 }
 
-pub type FunctionResult<T> = Result<T, Box<dyn std::error::Error>>;
+#[derive(Error, Debug)]
+pub enum PluginCallRequest {
+    #[error("Request not found")]
+    NotFound,
+}
+
+pub type ManagerResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug)]
 pub struct ParseVariableError {

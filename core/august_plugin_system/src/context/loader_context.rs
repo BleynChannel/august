@@ -6,49 +6,47 @@ use crate::{
     Loader, Manager,
 };
 
-pub struct LoaderContext<'a, 'b> {
-    loader: &'b mut Loader<'a>,
+pub struct LoaderContext<'a, 'b, F: Function> {
+    loader: &'b mut Loader<'a, F>,
 }
 
-impl<'a, 'b> LoaderContext<'a, 'b> {
-    pub(crate) fn new(loader: &'b mut Loader<'a>) -> Self {
+impl<'a, 'b, F: Function> LoaderContext<'a, 'b, F> {
+    pub(crate) fn new(loader: &'b mut Loader<'a, F>) -> Self {
         Self { loader }
     }
 
     pub fn register_manager<M>(&mut self, manager: M) -> Result<(), RegisterManagerError>
     where
-        M: Manager<'a> + 'static,
+        M: Manager<'a, F> + 'static,
     {
         self.loader.register_manager(manager)
     }
 
     pub fn register_managers<M>(&mut self, managers: M) -> Result<(), RegisterManagerError>
     where
-        M: IntoIterator<Item = Box<dyn Manager<'a>>>,
+        M: IntoIterator<Item = Box<dyn Manager<'a, F>>>,
     {
         self.loader.register_managers(managers)
     }
-
-	//TODO: Добавить регистрацию плагинов
 
     pub fn register_request(&mut self, request: Request) {
         self.loader.requests.push(request);
     }
 
-    pub fn register_requests<R>(&mut self, requests: R)
+    pub fn register_requests<I>(&mut self, requests: I)
     where
-        R: IntoIterator<Item = Request>,
+        I: IntoIterator<Item = Request>,
     {
         self.loader.requests.extend(requests);
     }
 
-    pub fn register_function(&mut self, function: Function) {
+    pub fn register_function(&mut self, function: F) {
         self.loader.registry.push(Arc::new(function));
     }
 
-    pub fn register_functions<F>(&mut self, functions: F)
+    pub fn register_functions<I>(&mut self, functions: I)
     where
-        F: IntoIterator<Item = Function>,
+        I: IntoIterator<Item = F>,
     {
         self.loader
             .registry

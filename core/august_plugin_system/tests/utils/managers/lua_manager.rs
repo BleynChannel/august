@@ -7,8 +7,8 @@ use std::{
 
 use august_plugin_system::{
     context::LoadPluginContext,
-    function::{Arg, Function},
-    utils::{FunctionResult, Ptr},
+    function::{Arg, Function, StdFunction},
+    utils::{ManagerResult, Ptr},
     variable::Variable,
     Manager, Plugin, PluginInfo, Registry, Requests,
 };
@@ -18,12 +18,12 @@ pub struct LuaPluginManager {
     lua_refs: HashMap<String, Arc<Mutex<Lua>>>,
 }
 
-impl<'a> Manager<'a> for LuaPluginManager {
+impl<'a> Manager<'a, StdFunction> for LuaPluginManager {
     fn format(&self) -> &str {
         "fpl"
     }
 
-    fn register_plugin(&mut self, path: &PathBuf) -> FunctionResult<PluginInfo> {
+    fn register_plugin(&mut self, path: &PathBuf) -> ManagerResult<PluginInfo> {
         let info = PluginInfo::new(
             path.parent()
                 .unwrap()
@@ -39,33 +39,36 @@ impl<'a> Manager<'a> for LuaPluginManager {
         Ok(info)
     }
 
-    fn load_plugin(&mut self, context: LoadPluginContext) -> FunctionResult<()> {
+    fn load_plugin(
+        &mut self,
+        mut context: LoadPluginContext<'a, StdFunction>,
+    ) -> ManagerResult<()> {
         let id = context.plugin().info().id.clone();
 
         println!("FunctionPluginManager::load_plugin - {:?}", id.clone());
 
-        let lua = Lua::new();
-        let (mut context, requests) = lua.context(|lua_context| -> FunctionResult<_> {
-            self.registry_to_lua(lua_context, &*context.registry())?;
-            self.load_src(lua_context, context.plugin().path().clone())?;
+        self.lua_refs
+            .insert(id.clone(), Arc::new(Mutex::new(Lua::new())));
+        let lua = self.lua_refs.get(&id).unwrap();
 
-            let requests = self.register_requests(lua_context, &*context.requests())?;
+        lua.lock()
+            .unwrap()
+            .context(|lua_context| -> ManagerResult<_> {
+                self.registry_to_lua(lua_context, context.registry())?;
+                self.load_src(lua_context, context.plugin().path().clone())?;
 
-            Ok((context, requests))
-        })?;
+                let requests = self.register_requests(lua, lua_context, context.requests())?;
+                for request in requests {
+                    context.register_request(request)?;
+                }
 
-        self.lua_refs.insert(id.clone(), Arc::new(Mutex::new(lua)));
-        let lua_ref = self.lua_refs.get(&id).unwrap();
-
-        for request in requests {
-            let lua = lua_ref.clone();
-            context.register_request(request, vec![Box::new(lua)])?;
-        }
+                Ok(())
+            })?;
 
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin>) -> FunctionResult<()> {
+    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, StdFunction>>) -> ManagerResult<()> {
         println!(
             "FunctionPluginManager::unload_plugin - {:?}",
             plugin.as_ref().info().id
@@ -76,7 +79,7 @@ impl<'a> Manager<'a> for LuaPluginManager {
 }
 
 impl LuaPluginManager {
-	#[allow(dead_code)]
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             lua_refs: HashMap::new(),
@@ -84,7 +87,11 @@ impl LuaPluginManager {
     }
 
     // Добавление функций из реестра
-    fn registry_to_lua(&self, lua_context: Context, registry: &Registry) -> FunctionResult<()> {
+    fn registry_to_lua<'a>(
+        &self,
+        lua_context: Context,
+        registry: &Registry<StdFunction>,
+    ) -> ManagerResult<()> {
         let globals = lua_context.globals();
 
         for function in registry.iter() {
@@ -97,7 +104,7 @@ impl LuaPluginManager {
                 }
 
                 let output = function
-                    .call(&[], &args)
+                    .call(&args)
                     .map_err(|e| rlua::Error::RuntimeError(e.to_string()))?
                     .map(|var| Self::august2lua(&var, ctx.clone()));
 
@@ -107,14 +114,14 @@ impl LuaPluginManager {
                 }
             })?;
 
-            globals.set(function_name, f)?;
+            globals.set(function_name.as_str(), f)?;
         }
 
         Ok(())
     }
 
     // Загрузка исходного кода плагина
-    fn load_src(&self, lua_context: Context, path: PathBuf) -> FunctionResult<()> {
+    fn load_src(&self, lua_context: Context, path: PathBuf) -> ManagerResult<()> {
         let src = std::fs::read_to_string(path.join("main.lua"))?;
         lua_context.load(&src).exec()?;
         Ok(())
@@ -123,49 +130,56 @@ impl LuaPluginManager {
     // Регистрация заказываемых функций
     fn register_requests(
         &self,
+        lua: &Arc<Mutex<Lua>>,
         lua_context: Context,
         requests: &Requests,
-    ) -> FunctionResult<Vec<Function>> {
+    ) -> ManagerResult<Vec<StdFunction>> {
         let globals = lua_context.globals();
-
         let mut result = vec![];
 
-        for request in requests {
+        for request in requests.iter() {
             match globals.get(request.name().clone())? {
                 Value::Function(_) => {
-                    let request_name = request.name();
-                    let function = Function::new(
-                        request_name.clone(),
-                        "It's description".to_string(),
+                    let request_name = request.name().clone();
+                    let lua = lua.clone();
+
+                    let function = StdFunction::new(
+                        request.name().as_str(),
                         request
                             .inputs()
                             .iter()
                             .enumerate()
-                            .map(|(index, ty)| Arg::new(format!("arg_{}", index), ty.clone()))
+                            .map(|(index, ty)| {
+                                let str = format!("arg_{}", index);
+                                Arg::new(str.as_str().clone(), ty.clone())
+                            })
                             .collect(),
                         request
                             .output()
-                            .map(|output| Arg::new("output".to_string(), output.clone())),
-                        move |exts, args| {
+                            .map(|output| Arg::new("output", output.clone())),
+                        vec![],
+                        move |_, args| {
                             let request_name = request_name.clone();
 
-                            let arc_lua = exts[0].downcast_ref::<Arc<Mutex<Lua>>>().unwrap();
-                            let lua = arc_lua.lock().map_err(|e| e.to_string())?;
-                            Ok(lua.context(move |ctx| -> FunctionResult<_> {
-                                let mut lua_args = vec![];
-                                for arg in args {
-                                    lua_args.push(Self::august2lua(arg, ctx)?);
-                                }
+                            Ok(lua
+                                .lock()
+                                .unwrap()
+                                .context(move |ctx| -> ManagerResult<_> {
+                                    let mut lua_args = vec![];
+                                    for arg in args {
+                                        lua_args.push(Self::august2lua(arg, ctx)?);
+                                    }
 
-                                let f: rlua::Function = ctx.globals().get(request_name)?;
+                                    let f: rlua::Function = ctx.globals().get(request_name)?;
 
-                                match f.call::<_, Value>(MultiValue::from_vec(lua_args))? {
-                                    Value::Nil => Ok(None),
-                                    value => Ok(Some(Self::lua2august(&value)?)),
-                                }
-                            })?)
+                                    match f.call::<_, Value>(MultiValue::from_vec(lua_args))? {
+                                        Value::Nil => Ok(None),
+                                        value => Ok(Some(Self::lua2august(&value)?)),
+                                    }
+                                })?)
                         },
                     );
+
                     result.push(function);
                 }
                 Value::Nil => {

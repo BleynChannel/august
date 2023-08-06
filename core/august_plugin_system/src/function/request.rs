@@ -1,25 +1,33 @@
 use crate::variable::VariableType;
 
 pub struct Request {
-    pub(crate) name: String,
-    pub(crate) inputs: Vec<VariableType>,
-    pub(crate) output: Option<VariableType>,
+    name: String,
+    inputs: Vec<VariableType>,
+    output: Option<VariableType>,
 }
 
 impl Request {
-    pub fn new(name: String, args: Vec<VariableType>, output: Option<VariableType>) -> Self {
-        Self { name, inputs: args, output }
+    pub fn new<S: Into<String>>(
+        name: S,
+        inputs: Vec<VariableType>,
+        output: Option<VariableType>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            inputs,
+            output,
+        }
     }
 
-	pub fn name(&self) -> String {
-		self.name.clone()
-	}
+    pub const fn name(&self) -> &String {
+        &self.name
+    }
 
-	pub fn inputs(&self) -> &Vec<VariableType> {
-		&self.inputs
-	}
+    pub const fn inputs(&self) -> &Vec<VariableType> {
+        &self.inputs
+    }
 
-	pub fn output(&self) -> &Option<VariableType> {
-		&self.output
-	}
+    pub const fn output(&self) -> &Option<VariableType> {
+        &self.output
+    }
 }

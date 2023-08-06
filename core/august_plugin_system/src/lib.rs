@@ -1,25 +1,25 @@
-pub mod utils;
 pub mod context;
+pub mod utils;
 
 mod info;
+mod loader;
 mod manager;
 mod plugin;
-mod loader;
 
-pub mod variable;
 pub mod function;
+pub mod variable;
 
 use std::sync::Arc;
 
+pub use context::*;
 pub use info::*;
+pub use loader::*;
 pub use manager::*;
 pub use plugin::*;
-pub use context::*;
-pub use loader::*;
 
-use function::{Function, Request};
+use function::Request;
 
-pub type Registry = Vec<Arc<Function>>;
+pub type Registry<F> = Vec<Arc<F>>;
 pub type Requests = Vec<Request>;
 
 #[cfg(feature = "derive")]

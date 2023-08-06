@@ -1,28 +1,34 @@
 use super::{
     generate_function::generate_function,
-    utils::{get_externals_inputs, get_literal_type},
+    utils::{get_attributes, get_externals, get_inputs, get_literal_type},
 };
 
-use std::{collections::HashMap, str::FromStr};
+// use std::str::FromStr;
 
-use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use proc_macro2::{Ident, TokenStream};
+use quote::{format_ident, quote, ToTokens};
 use syn::{Error, ItemFn, Result, ReturnType, Type, TypePath};
 
 pub(crate) fn generate(ast: &ItemFn, attr: &TokenStream) -> Result<TokenStream> {
     let sig = &ast.sig;
     let ident = &sig.ident;
 
-    let attrs = generate_attributes(attr)?;
-    let (exts, ins) = get_externals_inputs(&sig.inputs)?;
+    let attrs = get_attributes(attr);
 
-    let name = generate_name(attrs.get("name"), &ident.to_string())?;
-    let description = generate_description(
-        attrs.get("description"),
-        &"Description is missing".to_string(),
-    )?;
+    let exts = get_externals(&sig.inputs[0]);
+    let ins = get_inputs(sig.inputs.iter().skip(1));
+
+    let exts_args = generate_externals_atributes(&exts);
+
+    let name = generate_name(attrs.get("name"), &ident.to_string());
+    //TODO: Внедрить описание функций в August
+    // let description = generate_description(
+    //     attrs.get("description"),
+    //     &"Description is missing".to_string(),
+    // );
     let inputs = generate_inputs(&ins)?;
     let output = generate_output(&sig.output)?;
+    let externals = generate_externals(&exts);
     let function = generate_function(
         &exts,
         &ins,
@@ -32,41 +38,44 @@ pub(crate) fn generate(ast: &ItemFn, attr: &TokenStream) -> Result<TokenStream> 
     );
 
     Ok(quote! {
-        pub fn #ident() -> august_plugin_system::function::Function {
-            august_plugin_system::function::Function::new(
+        pub fn #ident(#exts_args) -> august_plugin_system::function::StdFunction {
+            august_plugin_system::function::StdFunction::new(
                 #name,
-                #description,
                 #inputs,
                 #output,
+                #externals,
                 #function
             )
         }
     })
 }
 
-fn generate_attributes(attr: &TokenStream) -> Result<HashMap<String, String>> {
-    let attrs_str = attr.to_string();
-    match attrs_str.is_empty() {
-        true => Ok(HashMap::new()),
-        false => Ok(attrs_str
-            .split(',')
-            .map(|attr| {
-                let attr: Vec<&str> = attr.split('=').map(|token| token.trim()).collect();
-                (attr[0].to_string(), attr[1].trim_matches('"').to_string())
-            })
-            .collect()),
-    }
+fn generate_externals_atributes(exts: &Vec<(Ident, &Type)>) -> TokenStream {
+    let exts: Vec<TokenStream> = exts
+        .iter()
+        .map(|(name, ty)| {
+            let ty = match ty {
+                Type::Reference(ref_ty) => &*ref_ty.elem,
+                _ => panic!("Wrong type"),
+            };
+
+            quote! { #name: #ty }
+        })
+        .collect();
+
+    quote! { #(#exts),* }
 }
 
-fn generate_name(name: Option<&String>, or: &String) -> Result<TokenStream> {
+fn generate_name(name: Option<&String>, or: &String) -> TokenStream {
     let name = name.map(|x| x.clone()).unwrap_or(or.to_string());
-    Ok(quote! { #name.to_string() })
+    quote! { #name }
 }
 
-fn generate_description(description: Option<&String>, or: &String) -> Result<TokenStream> {
-    let description = description.map(|x| x.clone()).unwrap_or(or.to_string());
-    Ok(quote! { #description.to_string() })
-}
+//TODO: Внедрить описание функций в August
+// fn generate_description(description: Option<&String>, or: &String) -> TokenStream {
+//     let description = description.map(|x| x.clone()).unwrap_or(or.to_string());
+//     quote! { #description }
+// }
 
 fn generate_inputs(inputs: &Vec<(String, &Type)>) -> Result<TokenStream> {
     let mut result = vec![];
@@ -88,9 +97,20 @@ fn generate_output(output: &ReturnType) -> Result<TokenStream> {
     }
 }
 
+fn generate_externals(exts: &Vec<(Ident, &Type)>) -> TokenStream {
+    let exts: Vec<TokenStream> = exts
+        .iter()
+        .map(|(name, _)| {
+            quote! { Box::new(#name) as Box<dyn core::any::Any + Send + Sync> }
+        })
+        .collect();
+
+    quote! { vec![#(#exts),*] }
+}
+
 fn generate_arg(name: &String, ty: &Type) -> Result<TokenStream> {
     let ty = get_variable_type_path(get_literal_type(ty))?;
-    Ok(quote! { august_plugin_system::function::Arg::new(#name.to_string(), #ty) })
+    Ok(quote! { august_plugin_system::function::Arg::new(#name, #ty) })
 }
 
 const VARIABLE_TYPES: [(&str, &str); 15] = [
@@ -116,7 +136,7 @@ fn get_variable_type_path(path: &TypePath) -> Result<TokenStream> {
 
     match VARIABLE_TYPES.into_iter().find(|(name, _)| **name == ident) {
         Some((_, token)) => {
-            let token = TokenStream::from_str(token).unwrap();
+            let token = format_ident!("{}", token);
             Ok(quote! { august_plugin_system::variable::VariableType::#token })
         }
         None => Err(Error::new_spanned(path, "type is not supported")),

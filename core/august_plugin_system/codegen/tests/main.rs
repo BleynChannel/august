@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod main {
-    use august_plugin_system::variable::Variable;
+    use august_plugin_system::{function::Function, function_call, variable::Variable};
 
     extern crate august_plugin_system;
 
@@ -9,7 +9,7 @@ mod main {
         use codegen::function;
 
         #[function]
-        fn add(_: (), (a, b): (Vec<i32>, String)) -> Vec<i32> {
+        fn add(_: (), a: Vec<&i32>, b: &String) -> Vec<i32> {
             let mut c = [0; 1];
             c[0] = a[0] + b.parse::<i32>().unwrap();
             println!("{} + {} = {}", a[0], b, c[0]);
@@ -17,14 +17,14 @@ mod main {
         }
 
         #[function(name = "Sub function")]
-        fn sub(_: (), (a, b): (i32, i32)) -> i32 {
+        fn sub(_: (), a: &i32, b: &i32) -> i32 {
             let c = a - b;
             println!("{} - {} = {}", a, b, c);
             c
         }
 
-        #[function(description = "Checks the letter `A` in the array of strings")]
-        fn contain_a(_: (), strs: Vec<String>) -> Variable {
+        #[function]
+        fn contain_a(_: (), strs: Vec<&String>) -> Variable {
             for s in strs {
                 if !s.contains("a") {
                     return Variable::Null;
@@ -33,25 +33,19 @@ mod main {
             true.into()
         }
 
-        #[function(
-            name = "Logging",
-            description = "Outputs the transmitted string with a mark at the beginning"
-        )]
-        fn log(opt: &Option<String>, s: String) {
-            println!("{s}: {opt:?}");
+        #[function(name = "Logging")]
+        fn log((title, code): (&Option<String>, &i32), message: &String) {
+            let title = title.clone().unwrap_or("[INFO]".to_string());
+            println!("{title} #{code}: {message}");
         }
     }
 
     #[test]
     fn serialize_add() {
         let add = functions::add();
-        println!(
-            "`add` name: {}\n`add` description: {}",
-            add.name(),
-            add.description()
-        );
+        println!("`add` name: {}", add.name(),);
 
-        let result = add.call(&[], &[vec![1].into(), "2".into()]);
+        let result = function_call!(add, vec![1], "2");
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(Variable::List(vec![3.into()])));
@@ -60,13 +54,9 @@ mod main {
     #[test]
     fn serialize_sub() {
         let sub = functions::sub();
-        println!(
-            "`sub` name: {}\n`sub` description: {}",
-            sub.name(),
-            sub.description()
-        );
+        println!("`sub` name: {}", sub.name(),);
 
-        let result = sub.call(&[], &[3.into(), 2.into()]);
+        let result = function_call!(sub, 3, 2);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(1.into()));
@@ -75,18 +65,14 @@ mod main {
     #[test]
     fn serialize_contain_a() {
         let contain_a = functions::contain_a();
-        println!(
-            "`contain_a` name: {}\n`contain_a` description: {}",
-            contain_a.name(),
-            contain_a.description()
-        );
+        println!("`contain_a` name: {}", contain_a.name());
 
-        let mut result = contain_a.call(&[], &[vec!["apple", "banana"].into()]);
+        let mut result = function_call!(contain_a, vec!["apple", "banana"]);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(true.into()));
 
-        result = contain_a.call(&[], &[vec!["moon", "sun"].into()]);
+        result = function_call!(contain_a, vec!["moon", "sun"]);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(Variable::Null));
@@ -94,19 +80,15 @@ mod main {
 
     #[test]
     fn serialize_log() {
-        let log = functions::log();
-        println!(
-            "`log` name: {}\n`log` description: {}",
-            log.name(),
-            log.description()
-        );
+        let log = functions::log(Some("[ERROR]".to_string()), 264);
+        println!("`log` name: {}", log.name(),);
 
-        let mut result = log.call(&[Box::new(Some("Hello world".to_string()))], &["[INFO]".into()]);
+        let mut result = function_call!(log, "It's error");
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
 
-        result = log.call(&[Box::new(Option::<String>::None)], &["[WARN]".into()]);
+        result = function_call!(log, "It's also error");
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);

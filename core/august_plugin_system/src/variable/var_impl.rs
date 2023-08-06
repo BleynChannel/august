@@ -4,87 +4,50 @@ use crate::utils::ParseVariableError;
 
 use super::{FromVariable, Variable};
 
-impl From<i8> for Variable {
-    fn from(x: i8) -> Self {
-        Self::I8(x)
-    }
+macro_rules! impl_from {
+    ($ty:ty, $from:ident) => {
+        impl From<$ty> for Variable {
+            fn from(x: $ty) -> Self {
+                Self::$from(x)
+            }
+        }
+    };
 }
 
-impl From<i16> for Variable {
-    fn from(x: i16) -> Self {
-        Self::I16(x)
-    }
-}
+macro_rules! impl_from_variable {
+    ($ty:ty, $from:ident) => {
+        impl FromVariable for $ty {
+            type Output = Self;
+            type RefOutput<'a> = &'a Self;
+            type MutOutput<'a> = &'a mut Self;
 
-impl From<i32> for Variable {
-    fn from(x: i32) -> Self {
-        Self::I32(x)
-    }
-}
+            fn from_var(var: Variable) -> Result<Self::Output, ParseVariableError> {
+                match var {
+                    Variable::$from(x) => Ok(x),
+                    _ => Err(ParseVariableError::new(stringify!($from))),
+                }
+            }
 
-impl From<i64> for Variable {
-    fn from(x: i64) -> Self {
-        Self::I64(x)
-    }
-}
+            fn from_var_ref(var: &Variable) -> Result<Self::RefOutput<'_>, ParseVariableError> {
+                match var {
+                    Variable::$from(x) => Ok(x),
+                    _ => Err(ParseVariableError::new(stringify!($from))),
+                }
+            }
 
-impl From<u8> for Variable {
-    fn from(x: u8) -> Self {
-        Self::U8(x)
-    }
-}
-
-impl From<u16> for Variable {
-    fn from(x: u16) -> Self {
-        Self::U16(x)
-    }
-}
-
-impl From<u32> for Variable {
-    fn from(x: u32) -> Self {
-        Self::U32(x)
-    }
-}
-
-impl From<u64> for Variable {
-    fn from(x: u64) -> Self {
-        Self::U64(x)
-    }
-}
-
-impl From<f32> for Variable {
-    fn from(x: f32) -> Self {
-        Self::F32(x)
-    }
-}
-
-impl From<f64> for Variable {
-    fn from(x: f64) -> Self {
-        Self::F64(x)
-    }
-}
-
-impl From<bool> for Variable {
-    fn from(x: bool) -> Self {
-        Self::Bool(x)
-    }
-}
-
-impl From<char> for Variable {
-    fn from(x: char) -> Self {
-        Self::Char(x)
-    }
+            fn from_var_mut(var: &mut Variable) -> Result<Self::MutOutput<'_>, ParseVariableError> {
+                match var {
+                    Variable::$from(x) => Ok(x),
+                    _ => Err(ParseVariableError::new(stringify!($from))),
+                }
+            }
+        }
+    };
 }
 
 impl From<&str> for Variable {
     fn from(x: &str) -> Self {
         Self::String(x.to_string())
-    }
-}
-
-impl From<String> for Variable {
-    fn from(x: String) -> Self {
-        Self::String(x)
     }
 }
 
@@ -99,12 +62,26 @@ where
 
 impl<T> From<Vec<T>> for Variable
 where
-    T: Into<Variable> + Clone,
+    T: Into<Variable>,
 {
     fn from(x: Vec<T>) -> Self {
-        Self::List(x.iter().cloned().map(|item| item.into()).collect())
+        Self::List(x.into_iter().map(|item| item.into()).collect())
     }
 }
+
+impl_from!(i8, I8);
+impl_from!(i16, I16);
+impl_from!(i32, I32);
+impl_from!(i64, I64);
+impl_from!(u8, U8);
+impl_from!(u16, U16);
+impl_from!(u32, U32);
+impl_from!(u64, U64);
+impl_from!(f32, F32);
+impl_from!(f64, F64);
+impl_from!(bool, Bool);
+impl_from!(char, Char);
+impl_from!(String, String);
 
 impl Default for Variable {
     fn default() -> Self {
@@ -114,9 +91,7 @@ impl Default for Variable {
 
 impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
+        f.write_str(
             match self {
                 Variable::Null => "Null".to_string(),
                 Variable::I8(x) => format!("I8({x})"),
@@ -134,16 +109,8 @@ impl Display for Variable {
                 Variable::String(x) => format!("String({x})"),
                 Variable::List(x) => format!("List({x:?})"),
             }
+            .as_str(),
         )
-    }
-}
-
-impl Variable {
-    pub fn parse<F>(&self) -> Result<F, ParseVariableError>
-    where
-        F: FromVariable,
-    {
-        F::from_var(self)
     }
 }
 
@@ -156,127 +123,72 @@ impl Variable {
     }
 }
 
-impl FromVariable for i8 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::I8(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("I8")),
-        }
+impl Variable {
+    pub fn parse<F>(self) -> F::Output
+    where
+        F: FromVariable,
+    {
+        F::from_var(self).unwrap()
     }
-}
 
-impl FromVariable for i16 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::I16(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("I16")),
-        }
+    pub fn parse_ref<F>(&self) -> F::RefOutput<'_>
+    where
+        F: FromVariable,
+    {
+        F::from_var_ref(self).unwrap()
     }
-}
 
-impl FromVariable for i32 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::I32(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("I32")),
-        }
+    pub fn parse_mut<F>(&mut self) -> F::MutOutput<'_>
+    where
+        F: FromVariable,
+    {
+        F::from_var_mut(self).unwrap()
     }
-}
 
-impl FromVariable for i64 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::I64(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("I64")),
-        }
+    pub fn try_parse<F>(self) -> Result<F::Output, ParseVariableError>
+    where
+        F: FromVariable,
+    {
+        F::from_var(self)
     }
-}
 
-impl FromVariable for u8 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::U8(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("U8")),
-        }
+    pub fn try_parse_ref<F>(&self) -> Result<F::RefOutput<'_>, ParseVariableError>
+    where
+        F: FromVariable,
+    {
+        F::from_var_ref(self)
     }
-}
 
-impl FromVariable for u16 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::U16(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("U16")),
-        }
-    }
-}
-
-impl FromVariable for u32 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::U32(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("U32")),
-        }
-    }
-}
-
-impl FromVariable for u64 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::U64(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("U64")),
-        }
-    }
-}
-
-impl FromVariable for f32 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::F32(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("F32")),
-        }
-    }
-}
-
-impl FromVariable for f64 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::F64(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("F64")),
-        }
-    }
-}
-
-impl FromVariable for bool {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::Bool(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("Bool")),
-        }
-    }
-}
-
-impl FromVariable for char {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::Char(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("Char")),
-        }
-    }
-}
-
-impl FromVariable for String {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
-        match var {
-            Variable::String(x) => Ok(x.clone()),
-            _ => Err(ParseVariableError::new("String")),
-        }
+    pub fn try_parse_mut<F>(&mut self) -> Result<F::MutOutput<'_>, ParseVariableError>
+    where
+        F: FromVariable,
+    {
+        F::from_var_mut(self)
     }
 }
 
 impl FromVariable for Vec<Variable> {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
+    type Output = Self;
+    type RefOutput<'a> = &'a Self;
+    type MutOutput<'a> = &'a mut Self;
+
+    fn from_var(var: Variable) -> Result<Self::Output, ParseVariableError> {
         match var {
-            Variable::List(x) => Ok(x.clone()),
+            Variable::List(x) => Ok(x),
+            _ => Err(ParseVariableError::new("Vec<Variable>")),
+        }
+    }
+
+    fn from_var_ref(var: &Variable) -> Result<Self::RefOutput<'_>, ParseVariableError> {
+        match var {
+            Variable::List(x) => Ok(x),
+            _ => Err(ParseVariableError::new("Vec<Variable>")),
+        }
+    }
+
+    fn from_var_mut(var: &mut Variable) -> Result<Self::MutOutput<'_>, ParseVariableError> {
+        match var {
+            Variable::List(x) => Ok(x),
             _ => Err(ParseVariableError::new("Vec<Variable>")),
         }
     }
@@ -286,12 +198,42 @@ impl<T> FromVariable for Vec<T>
 where
     T: FromVariable,
 {
-    fn from_var(var: &Variable) -> Result<Self, ParseVariableError> {
+    type Output = Vec<T::Output>;
+    type RefOutput<'a> = Vec<T::RefOutput<'a>> where T: 'a;
+    type MutOutput<'a> = Vec<T::MutOutput<'a>> where T: 'a;
+
+    fn from_var(var: Variable) -> Result<Self::Output, ParseVariableError> {
+        match var {
+            Variable::List(x) => {
+                let mut arr = vec![];
+                for var in x.into_iter() {
+                    arr.push(var.try_parse::<T>()?);
+                }
+                Ok(arr)
+            }
+            _ => Err(ParseVariableError::new("Vec<T>")),
+        }
+    }
+
+    fn from_var_ref(var: &Variable) -> Result<Self::RefOutput<'_>, ParseVariableError> {
         match var {
             Variable::List(x) => {
                 let mut arr = vec![];
                 for var in x.iter() {
-                    arr.push(var.parse::<T>()?);
+                    arr.push(var.try_parse_ref::<T>()?);
+                }
+                Ok(arr)
+            }
+            _ => Err(ParseVariableError::new("Vec<T>")),
+        }
+    }
+
+    fn from_var_mut(var: &mut Variable) -> Result<Self::MutOutput<'_>, ParseVariableError> {
+        match var {
+            Variable::List(x) => {
+                let mut arr = vec![];
+                for var in x.iter_mut() {
+                    arr.push(var.try_parse_mut::<T>()?);
                 }
                 Ok(arr)
             }
@@ -299,3 +241,17 @@ where
         }
     }
 }
+
+impl_from_variable!(i8, I8);
+impl_from_variable!(i16, I16);
+impl_from_variable!(i32, I32);
+impl_from_variable!(i64, I64);
+impl_from_variable!(u8, U8);
+impl_from_variable!(u16, U16);
+impl_from_variable!(u32, U32);
+impl_from_variable!(u64, U64);
+impl_from_variable!(f32, F32);
+impl_from_variable!(f64, F64);
+impl_from_variable!(bool, Bool);
+impl_from_variable!(char, Char);
+impl_from_variable!(String, String);

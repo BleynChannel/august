@@ -19,8 +19,18 @@ pub enum Variable {
     List(Vec<Variable>),
 }
 
-pub trait FromVariable: Sized {
-	fn from_var(var: &Variable) -> Result<Self, ParseVariableError>;
+pub trait FromVariable {
+    type Output;
+    type RefOutput<'a>
+    where
+        Self: 'a;
+    type MutOutput<'a>
+    where
+        Self: 'a;
+
+    fn from_var(var: Variable) -> Result<Self::Output, ParseVariableError>;
+    fn from_var_ref(var: &Variable) -> Result<Self::RefOutput<'_>, ParseVariableError>;
+    fn from_var_mut(var: &mut Variable) -> Result<Self::MutOutput<'_>, ParseVariableError>;
 }
 
 #[test]
@@ -33,10 +43,33 @@ fn into() {
 
 #[test]
 fn parse() {
-    let a: Variable = 10_i16.into();
+    let mut a: Variable = 10_i16.into();
 
-	let b = a.parse::<i16>();
+    assert_eq!(a.clone().parse::<i16>(), 10);
+    assert_eq!(a.parse_ref::<i16>(), &10);
+    assert_eq!(a.parse_mut::<i16>(), &mut 10);
 
-	assert!(b.is_ok());
-	assert_eq!(b.unwrap(), 10);
+    match a.clone().try_parse::<i16>() {
+        Ok(b) => assert_eq!(b, 10),
+        Err(e) => panic!("{}", e),
+    };
+
+	match a.try_parse_ref::<i16>() {
+        Ok(b) => assert_eq!(b, &10),
+        Err(e) => panic!("{}", e),
+    };
+
+	match a.try_parse_mut::<i16>() {
+        Ok(b) => assert_eq!(b, &mut 10),
+        Err(e) => panic!("{}", e),
+    };
+}
+
+#[test]
+fn parse_vec() {
+    let mut a: Variable = vec![10_i16].into();
+
+    let b = a.parse_mut::<Vec<i16>>();
+
+    assert_eq!(b, vec![&mut 10]);
 }

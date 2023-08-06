@@ -12,8 +12,12 @@ pub(crate) fn validate(ast: &ItemFn, attr: &TokenStream) -> Result<()> {
     validate_function(&ast.sig)
 }
 
-const VALIDATE_ATTRIBUTES: [&str; 2] = ["name", "description"];
-const VALIDATE_STRING_ATTRIBUTES: [&str; 2] = ["name", "description"];
+//TODO: Внедрить описание функций в August
+// const VALIDATE_ATTRIBUTES: [&str; 2] = ["name", "description"];
+// const VALIDATE_STRING_ATTRIBUTES: [&str; 2] = ["name", "description"];
+
+const VALIDATE_ATTRIBUTES: [&str; 1] = ["name"];
+const VALIDATE_STRING_ATTRIBUTES: [&str; 1] = ["name"];
 
 fn validate_attributes(attrs: &TokenStream) -> Result<()> {
     let attrs_str = attrs.to_string();
@@ -53,60 +57,71 @@ fn validate_attributes(attrs: &TokenStream) -> Result<()> {
 }
 
 fn validate_function(sig: &Signature) -> Result<()> {
-    if sig.inputs.len() != 2 {
-        return Err(Error::new_spanned(
-            sig,
-            "function must have only 2 arguments",
-        ));
-    }
-
     validate_externals(&sig.inputs[0])?;
-    validate_args(&sig.inputs[1])?;
+    validate_args(sig.inputs.iter().skip(1))?;
 
     if let syn::ReturnType::Type(_, ref ty) = sig.output {
-        validate_type(ty.as_ref())?;
+        validate_type(ty.as_ref(), false)?;
     }
 
     Ok(())
 }
 
-fn validate_externals(arg: &FnArg) -> Result<()> {
-    match arg {
-        FnArg::Receiver(_) => Err(Error::new_spanned(arg, "Receiver is not supported")),
-        FnArg::Typed(pat) => validate_tuple(&*pat.ty, |_| Ok(())),
+fn validate_externals(exts: &FnArg) -> Result<()> {
+    match exts {
+        FnArg::Receiver(_) => Err(Error::new_spanned(exts, "Receiver is not supported")),
+        FnArg::Typed(pat) => match &*pat.ty {
+            Type::Reference(_) => Ok(()),
+            Type::Tuple(tuple) => tuple.elems.iter().try_for_each(|ty| match ty {
+                Type::Reference(_) => Ok(()),
+                ty => Err(Error::new_spanned(
+                    ty,
+                    "type must contain only references (&T)",
+                )),
+            }),
+            ty => Err(Error::new_spanned(
+                ty,
+                "type must contain only references (&T)",
+            )),
+        },
     }
 }
 
-fn validate_args(arg: &FnArg) -> Result<()> {
-    match arg {
-        FnArg::Receiver(_) => Err(Error::new_spanned(arg, "Receiver is not supported")),
-        FnArg::Typed(pat) => validate_tuple(&*pat.ty, |ty| validate_type(ty)),
-    }
-}
-
-fn validate_tuple<F>(ty: &Type, validate: F) -> Result<()>
+fn validate_args<'a, I>(mut args: I) -> Result<()>
 where
-    F: Fn(&Type) -> Result<()>,
+    I: Iterator<Item = &'a FnArg>,
 {
-    match ty {
-        Type::Tuple(ty_tuple) => {
-            for ty in ty_tuple.elems.iter() {
-                validate(ty)?;
-            }
+    args.try_for_each(|arg| match arg {
+        FnArg::Receiver(_) => Err(Error::new_spanned(arg, "Receiver is not supported")),
+        FnArg::Typed(pat) => validate_type(&*pat.ty, true),
+    })?;
 
-            Ok(())
-        }
-        ty => validate(ty),
-    }
+    Ok(())
 }
 
-fn validate_type(ty: &Type) -> Result<()> {
-    match ty {
-        Type::Path(path) => validate_type_path(&path),
-        _ => Err(Error::new_spanned(
-            ty,
-            "type must contain only literals (T)",
-        )),
+fn validate_type(ty: &Type, is_ref: bool) -> Result<()> {
+    match is_ref {
+        true => match ty {
+            Type::Path(path) => validate_type_path(&path, is_ref),
+            Type::Reference(r) => match r.mutability {
+                None => validate_type(&*r.elem, false),
+                _ => Err(Error::new_spanned(
+                    ty,
+                    "type must not contain a mutated reference",
+                )),
+            },
+            ty => Err(Error::new_spanned(
+                ty,
+                "type must contain only references (&T) or Vec<&T>",
+            )),
+        },
+        false => match ty {
+            Type::Path(path) => validate_type_path(&path, is_ref),
+            ty => Err(Error::new_spanned(
+                ty,
+                "type must contain only literals (T)",
+            )),
+        },
     }
 }
 
@@ -115,7 +130,7 @@ const VALIDATE_TYPE: [&str; 15] = [
     "Vec", "Variable",
 ];
 
-fn validate_type_path(path: &TypePath) -> Result<()> {
+fn validate_type_path(path: &TypePath, is_ref: bool) -> Result<()> {
     let segment = path.path.segments.last().unwrap();
     let ty = segment.ident.to_string();
 
@@ -125,12 +140,17 @@ fn validate_type_path(path: &TypePath) -> Result<()> {
                 PathArguments::AngleBracketed(args) => {
                     let arg = args.args.first().unwrap();
                     match arg {
-                        GenericArgument::Type(ty) => return validate_type(ty),
+                        GenericArgument::Type(ty) => return validate_type(ty, is_ref),
                         _ => return Err(Error::new_spanned(arg, "Vec must contain only a type")),
                     }
                 }
-                _ => {}
+                _ => (),
             }
+        } else if is_ref {
+            return Err(Error::new_spanned(
+                path,
+                "type must contain only references (&T) or Vec<&T>",
+            ));
         }
     } else {
         return Err(Error::new_spanned(path, "type is not supported"));

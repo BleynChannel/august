@@ -1,21 +1,24 @@
 use crate::variable::VariableType;
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Arg {
-    pub(crate) name: String,
-    pub(crate) ty: VariableType,
+    name: String,
+    ty: VariableType,
 }
 
 impl Arg {
-    pub fn new(name: String, ty: VariableType) -> Self {
-        Self { name, ty }
+    pub fn new<S: Into<String>>(name: S, ty: VariableType) -> Self {
+        Self {
+            name: name.into(),
+            ty,
+        }
     }
 
-    pub fn name(&self) -> String {
-        self.name.clone()
+    pub const fn name(&self) -> &String {
+        &self.name
     }
 
-    pub fn ty(&self) -> VariableType {
+    pub const fn ty(&self) -> VariableType {
         self.ty
     }
 }

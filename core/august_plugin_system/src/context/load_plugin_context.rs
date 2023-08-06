@@ -1,21 +1,19 @@
-use std::any::Any;
-
 use crate::{
     function::Function,
     utils::{Ptr, RegisterRequestError},
     Plugin, Registry, Requests,
 };
 
-pub struct LoadPluginContext<'a> {
-    pub(crate) plugin: Ptr<'a, Plugin<'a>>,
-    pub(crate) registry: Ptr<'a, Registry>,
+pub struct LoadPluginContext<'a, F: Function> {
+    pub(crate) plugin: Ptr<'a, Plugin<'a, F>>,
+    pub(crate) registry: Ptr<'a, Registry<F>>,
     pub(crate) requests: Ptr<'a, Requests>,
 }
 
-impl<'a> LoadPluginContext<'a> {
+impl<'a, F: Function> LoadPluginContext<'a, F> {
     pub(crate) const fn new(
-        plugin: Ptr<'a, Plugin<'a>>,
-        registry: Ptr<'a, Registry>,
+        plugin: Ptr<'a, Plugin<'a, F>>,
+        registry: Ptr<'a, Registry<F>>,
         requests: Ptr<'a, Requests>,
     ) -> Self {
         Self {
@@ -25,11 +23,11 @@ impl<'a> LoadPluginContext<'a> {
         }
     }
 
-    pub fn plugin(&self) -> &Plugin<'a> {
+    pub fn plugin(&self) -> &Plugin<'a, F> {
         self.plugin.as_ref()
     }
 
-    pub fn registry(&self) -> &Registry {
+    pub fn registry(&self) -> &Registry<F> {
         self.registry.as_ref()
     }
 
@@ -37,27 +35,23 @@ impl<'a> LoadPluginContext<'a> {
         self.requests.as_ref()
     }
 
-    pub fn register_request(
-        &mut self,
-        request: Function,
-        externals: Vec<Box<dyn Any>>,
-    ) -> Result<(), RegisterRequestError> {
+    pub fn register_request(&mut self, request: F) -> Result<(), RegisterRequestError> {
         {
             if let Some(ord) = self
                 .requests
                 .as_ref()
                 .iter()
-                .find(|ord| ord.name == request.name)
+                .find(|ord| ord.name() == request.name())
             {
-                for input in ord.inputs.iter() {
+                for input in ord.inputs().iter() {
                     request
-                        .inputs
+                        .inputs()
                         .iter()
-                        .find(|arg| *input == arg.ty)
+                        .find(|arg| *input == arg.ty())
                         .ok_or(RegisterRequestError::ArgumentsIncorrectly)?;
                 }
 
-                if ord.output != request.output.as_ref().map(|arg| arg.ty) {
+                if *ord.output() != request.output().as_ref().map(|arg| arg.ty()) {
                     return Err(RegisterRequestError::ArgumentsIncorrectly);
                 }
             } else {
@@ -65,7 +59,7 @@ impl<'a> LoadPluginContext<'a> {
             }
         }
 
-        self.plugin.as_mut().requests.push((externals, request));
+        self.plugin.as_mut().requests.push(request);
 
         Ok(())
     }

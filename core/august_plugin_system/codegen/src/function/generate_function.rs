@@ -1,13 +1,11 @@
-use std::str::FromStr;
-
-use proc_macro2::TokenStream;
-use quote::quote;
+use proc_macro2::{Ident, TokenStream};
+use quote::{format_ident, quote};
 use syn::{ReturnType, Type, TypePath};
 
-use crate::function::utils::get_literal_type;
+use crate::function::utils::{clear_ref, get_literal_type};
 
 pub(crate) fn generate_function(
-    externals: &Vec<&Type>,
+    externals: &Vec<(Ident, &Type)>,
     inputs: &Vec<(String, &Type)>,
     output: &ReturnType,
     args: TokenStream,
@@ -19,7 +17,7 @@ pub(crate) fn generate_function(
     let out = return_output(output);
 
     quote! {
-        move |exts, args| -> august_plugin_system::utils::FunctionResult<Option<august_plugin_system::variable::Variable>> {
+        move |exts, args| -> august_plugin_system::function::StdFunctionResult {
             let func = move |#args| #output #block;
             #call
             #out
@@ -27,7 +25,7 @@ pub(crate) fn generate_function(
     }
 }
 
-fn serialize_exts(externals: &Vec<&Type>) -> TokenStream {
+fn serialize_exts(externals: &Vec<(Ident, &Type)>) -> TokenStream {
     let exts: Vec<TokenStream> = (0..externals.len())
         .map(|index| {
             quote! { exts[#index].downcast_ref().ok_or("Failed to downcast")? }
@@ -38,11 +36,16 @@ fn serialize_exts(externals: &Vec<&Type>) -> TokenStream {
 }
 
 fn serialize_inputs(inputs: &Vec<(String, &Type)>) -> TokenStream {
-    let args: Vec<TokenStream> = (0..inputs.len())
-        .map(|index| quote! { args[#index].parse()? })
+    let args: Vec<TokenStream> = inputs
+        .iter()
+        .enumerate()
+        .map(|(index, (_, ty))| {
+            let ty = clear_ref(*ty);
+            quote! { args[#index].try_parse_ref::<#ty>()? }
+        })
         .collect();
 
-    quote! { (#(#args), *) }
+    quote! { #(#args), * }
 }
 
 fn function_call(exts: TokenStream, args: TokenStream, output: &ReturnType) -> TokenStream {
@@ -84,12 +87,8 @@ fn serialize_output(ty: &TypePath) -> TokenStream {
     let type_name = ty.path.segments.last().unwrap().ident.to_string();
 
     if let Some((_, token)) = VARIABLE_DATAS.iter().find(|(name, _)| **name == type_name) {
-        let ser_token = TokenStream::from_str(
-            format!("august_plugin_system::variable::Variable::{}", *token).as_str(),
-        )
-        .unwrap();
-
-        quote! { #ser_token (result) }
+        let token = format_ident!("{}", *token);
+        quote! { august_plugin_system::variable::Variable::#token (result) }
     } else if type_name == "Vec" {
         quote! { august_plugin_system::variable::Variable::List(result.into_iter().map(|item| item.into()).collect()) }
     } else if type_name == "Variable" {
