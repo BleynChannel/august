@@ -11,7 +11,7 @@ use august_plugin_system::{function::StdFunction, Loader, Manager};
 pub fn get_plugin_path(name: &str, format: &str) -> PathBuf {
     std::env::current_dir()
         .unwrap()
-        .join(format!("C:/Projects/Project/AUGUST/august/plugins/{name}/plugin.{format}"))
+        .join(format!("../../plugins/{name}/plugin.{format}"))
 }
 
 #[allow(dead_code)]
