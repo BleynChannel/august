@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+
 use crate::{
     function::Function,
     utils::{
@@ -218,18 +220,34 @@ impl<'a, F: Function> Loader<'a, F> {
         &self.plugins
     }
 
+    pub const fn get_registry(&self) -> &Registry<F> {
+        &self.registry
+    }
+
+    pub const fn get_requests(&self) -> &Requests {
+        &self.requests
+    }
+
     pub fn call_request(
         &self,
         name: &str,
         args: &[Variable],
     ) -> Result<Vec<F::CallResult>, PluginCallRequest> {
-        let mut result = vec![];
+        self.plugins
+            .iter()
+            .map(|plugin| plugin.call_request(name, args))
+            .collect::<Result<Vec<F::CallResult>, PluginCallRequest>>()
+    }
 
-        for plugin in self.plugins.iter() {
-            result.push(plugin.call_request(name, args)?);
-        }
-
-        Ok(result)
+    pub fn par_call_request(
+        &self,
+        name: &str,
+        args: &[Variable],
+    ) -> Result<Vec<F::CallResult>, PluginCallRequest> {
+        self.plugins
+            .par_iter()
+            .map(|plugin| plugin.call_request(name, args))
+            .collect::<Result<Vec<F::CallResult>, PluginCallRequest>>()
     }
 }
 

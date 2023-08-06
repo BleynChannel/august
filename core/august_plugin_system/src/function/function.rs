@@ -5,7 +5,7 @@ use crate::variable::Variable;
 use super::Arg;
 
 pub trait Function: Send + Sync {
-    type CallResult;
+    type CallResult: Send + Sync;
 
     fn name(&self) -> &String;
     fn inputs(&self) -> &Vec<Arg>;
@@ -13,7 +13,7 @@ pub trait Function: Send + Sync {
     fn call(&self, args: &[Variable]) -> Self::CallResult;
 }
 
-pub type StdFunctionResult = Result<Option<Variable>, Box<dyn std::error::Error>>;
+pub type StdFunctionResult = Result<Option<Variable>, Box<dyn std::error::Error + Send + Sync>>;
 
 pub struct StdFunction {
     name: String,

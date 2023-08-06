@@ -11,7 +11,7 @@ use august_plugin_system::{function::StdFunction, Loader, Manager};
 pub fn get_plugin_path(name: &str, format: &str) -> PathBuf {
     std::env::current_dir()
         .unwrap()
-        .join(format!("../../plugins/{name}/plugin.{format}"))
+        .join(format!("C:/Projects/Project/AUGUST/august/plugins/{name}/plugin.{format}"))
 }
 
 #[allow(dead_code)]
@@ -25,4 +25,14 @@ where
     }
 
     loader
+}
+
+#[allow(dead_code)]
+pub fn benchmark<F, R>(f: F) -> (std::time::Duration, R)
+where
+    F: FnOnce() -> R,
+{
+    let timer = std::time::Instant::now();
+    let data = f();
+    (timer.elapsed(), data)
 }

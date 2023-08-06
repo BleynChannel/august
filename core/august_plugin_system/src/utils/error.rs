@@ -17,7 +17,7 @@ pub enum RegisterManagerError {
     #[error("Format `{0}` is already occupied")]
     AlreadyOccupiedFormat(String),
     #[error("Manager registration error by the manager")]
-    RegisterManagerByManager(#[from] Box<dyn StdError>),
+    RegisterManagerByManager(#[from] Box<dyn StdError + Send + Sync>),
 }
 
 #[derive(Error, Debug)]
@@ -25,7 +25,7 @@ pub enum UnregisterManagerError {
     #[error("Not found manager")]
     NotFound,
     #[error("Manager unregistration error by the manager")]
-    UnregisterManagerByManager(#[from] Box<dyn StdError>),
+    UnregisterManagerByManager(#[from] Box<dyn StdError + Send + Sync>),
 }
 
 #[derive(Error, Debug)]
@@ -37,7 +37,7 @@ pub enum RegisterPluginError {
     #[error("Unknown plugin manager for the format '{0}'")]
     UnknownManagerFormat(String),
     #[error("Plugin registration error by the manager")]
-    RegisterPluginByManager(#[from] Box<dyn StdError>),
+    RegisterPluginByManager(#[from] Box<dyn StdError + Send + Sync>),
     #[error("A plugin with this ID already exists")]
     AlreadyExistsID(String),
 }
@@ -51,7 +51,7 @@ pub enum UnregisterPluginError {
     #[error("The plugin has an unregistered manager")]
     HasUnregisteredManager,
     #[error("Plugin unregistration error by the manager")]
-    UnregisterPluginByManager(#[from] Box<dyn StdError>),
+    UnregisterPluginByManager(#[from] Box<dyn StdError + Send + Sync>),
 }
 
 #[derive(Error, Debug)]
@@ -66,7 +66,7 @@ pub enum LoadPluginError {
         error: Box<LoadPluginError>,
     },
     #[error("Plugin load error by the manager")]
-    LoadPluginByManager(#[from] Box<dyn StdError>),
+    LoadPluginByManager(#[from] Box<dyn StdError + Send + Sync>),
     #[error("Requests not found: {0:?}")]
     RequestsNotFound(Vec<String>),
 }
@@ -78,7 +78,7 @@ pub enum UnloadPluginError {
     #[error("The plugin is dependent on plugin `{0}`")]
     DependentOnAnotherPlugin(String),
     #[error("Plugin unload error by the manager")]
-    UnloadPluginByManager(#[from] Box<dyn StdError>),
+    UnloadPluginByManager(#[from] Box<dyn StdError + Send + Sync>),
 }
 
 #[derive(Error, Debug)]
@@ -95,7 +95,7 @@ pub enum PluginCallRequest {
     NotFound,
 }
 
-pub type ManagerResult<T> = Result<T, Box<dyn std::error::Error>>;
+pub type ManagerResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[derive(Debug)]
 pub struct ParseVariableError {

@@ -7,7 +7,7 @@ mod tests {
     use august_plugin_system::{function::Request, variable::VariableType, Loader};
     use codegen::function;
 
-    use crate::utils::{get_plugin_path, LuaPluginManager, VoidPluginManager};
+    use crate::utils::{benchmark, get_plugin_path, LuaPluginManager, VoidPluginManager};
 
     #[function]
     fn add(_: (), a: &i32, b: &i32) -> i32 {
@@ -174,6 +174,59 @@ mod tests {
             Ok(Some(result)) => println!("{:?}", result),
             Ok(None) => panic!("Unexpected result"),
         };
+
+        loader.stop().unwrap();
+    }
+
+    #[test]
+    fn parallel_call_request() {
+        let mut loader = Loader::new();
+        if let Err(e) = loader.context(move |mut ctx| {
+            ctx.register_request(Request::new(
+                "main".to_string(),
+                vec![VariableType::I32],
+                None,
+            ));
+            ctx.register_manager(LuaPluginManager::new())
+        }) {
+            panic!("{:?}: {}", e, e.to_string())
+        };
+
+        let plugins_result = loader.load_plugins([
+            get_plugin_path("parallel_plugins/one_plugin", "fpl")
+                .to_str()
+                .unwrap(),
+            get_plugin_path("parallel_plugins/two_plugin", "fpl")
+                .to_str()
+                .unwrap(),
+        ]);
+
+        match plugins_result {
+            Ok(_) => (),
+            Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
+            Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
+            Err((_, _)) => panic!("Unexpected error"),
+        };
+
+        let (duration, result) = benchmark(|| loader.call_request("main", &[10.into()]));
+        println!("Single: {duration:?}");
+
+        if let Err(e) = result.unwrap().get(0).unwrap() {
+            match e.downcast_ref::<rlua::Error>() {
+                Some(e) => panic!("[LUA ERROR]: {e:?}"),
+                None => panic!("{:?}: {}", e, e.to_string()),
+            }
+        }
+
+        let (duration, result) = benchmark(|| loader.par_call_request("main", &[10.into()]));
+        println!("Parallel: {duration:?}");
+
+        if let Err(e) = result.unwrap().get(0).unwrap() {
+            match e.downcast_ref::<rlua::Error>() {
+                Some(e) => panic!("[LUA ERROR]: {e:?}"),
+                None => panic!("{:?}: {}", e, e.to_string()),
+            }
+        }
 
         loader.stop().unwrap();
     }
