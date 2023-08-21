@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::format_ident;
-use syn::{FnArg, Pat, Type, TypePath};
+use syn::{Error, FnArg, Pat, Result, Type, TypePath};
 
 pub(crate) fn get_literal_type(ty: &Type) -> &TypePath {
     match ty {
@@ -32,47 +31,61 @@ pub(crate) fn get_attributes(attr: &TokenStream) -> HashMap<String, String> {
 pub(crate) fn get_externals(arg: &FnArg) -> Vec<(Ident, &Type)> {
     match arg {
         FnArg::Receiver(_) => panic!("Receiver is not supported"),
-        FnArg::Typed(pat) => match &*pat.ty {
-            Type::Tuple(tuple) => tuple
-                .elems
-                .iter()
-                .enumerate()
-                .map(|(index, ty)| (format_ident!("ext_{}", index), ty))
-                .collect(),
-            ty => vec![(Ident::new("ext_0", Span::call_site()), ty)],
+        FnArg::Typed(pat_type) => match &*pat_type.pat {
+            Pat::Tuple(pat_tuple) => match &*pat_type.ty {
+                Type::Tuple(ty_tuple) => pat_tuple
+                    .elems
+                    .iter()
+                    .zip(ty_tuple.elems.iter())
+                    .filter_map(|(pat, ty)| match ty {
+                        Type::Reference(r) => pat_to_ident(pat).unwrap().map(|name| (name, &*r.elem)),
+                        _ => panic!("type must contain only references (&T)"),
+                    })
+                    .collect(),
+                _ => panic!("Wrong type"),
+            },
+            pat => match pat_to_ident(pat).unwrap() {
+                Some(name) => match &*pat_type.ty {
+                    Type::Reference(r) => vec![(name, &*r.elem)],
+                    _ => panic!("type must contain only references (&T)"),
+                },
+                None => vec![],
+            },
         },
     }
 }
 
-pub(crate) fn get_inputs<'a, I>(args: I) -> Vec<(String, &'a Type)>
+pub(crate) fn get_inputs<'a, I>(args: I) -> Vec<(Ident, &'a Type)>
 where
     I: Iterator<Item = &'a FnArg>,
 {
     args.map(|arg| match arg {
         FnArg::Receiver(_) => panic!("Receiver is not supported"),
         FnArg::Typed(pat) => (
-            pat_to_string(&*pat.pat).unwrap_or("arg".to_string()),
+            pat_to_ident(&*pat.pat)
+                .unwrap()
+                .unwrap_or(Ident::new("arg", Span::call_site())),
             pat.ty.as_ref(),
         ),
     })
     .collect()
 }
 
-fn pat_to_string(pat: &Pat) -> Option<String> {
+pub(crate) fn pat_to_ident(pat: &Pat) -> Result<Option<Ident>> {
     match pat {
-        Pat::Const(_) => None,
-        Pat::Ident(pat) => Some(pat.ident.to_string()),
-        Pat::Lit(_) => None,
-        Pat::Macro(_) => None,
-        Pat::Or(_) => None,
-        Pat::Paren(_) => None,
-        Pat::Path(pat) => Some(pat.path.get_ident().unwrap().to_string()),
-        Pat::Range(_) => None,
-        Pat::Reference(pat) => pat_to_string(&pat.pat),
-        Pat::Rest(_) => None,
-        Pat::Type(pat) => pat_to_string(&pat.pat),
-        Pat::Wild(_) => None,
-        _ => panic!("Wrong type"),
+        Pat::Const(_) => Ok(None),
+        Pat::Ident(pat) => Ok(Some(pat.ident.clone())),
+        Pat::Lit(_) => Ok(None),
+        Pat::Macro(_) => Ok(None),
+        Pat::Or(_) => Ok(None),
+        Pat::Paren(_) => Ok(None),
+        Pat::Path(pat) => Ok(Some(pat.path.get_ident().unwrap().clone())),
+        Pat::Range(_) => Ok(None),
+        Pat::Reference(pat) => pat_to_ident(&pat.pat),
+        Pat::Rest(_) => Ok(None),
+        Pat::Type(pat) => pat_to_ident(&pat.pat),
+        Pat::Wild(_) => Ok(None),
+        _ => Err(Error::new_spanned(pat, "Wrong type")),
     }
 }
 

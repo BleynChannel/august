@@ -15,7 +15,7 @@ dependencies = [
 
 [[package]]
 name = "august_plugin_system"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "codegen",
  "rayon",
@@ -67,7 +67,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "codegen"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "august_plugin_system",
  "proc-macro2",

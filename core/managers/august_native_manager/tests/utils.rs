@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use august_native_manager::NativePluginManager;
-use august_plugin_system::{function::StdFunction, Loader};
+use august_plugin_system::{function::DynamicFunction, Loader};
 
-pub fn loader_init<'a>() -> Loader<'a, StdFunction> {
+pub fn loader_init<'a>() -> Loader<'a, DynamicFunction> {
     let mut loader = Loader::new();
     if let Err(e) = loader.context(move |mut ctx| ctx.register_manager(NativePluginManager::new()))
     {

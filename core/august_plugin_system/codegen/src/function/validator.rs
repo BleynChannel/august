@@ -1,7 +1,9 @@
 use proc_macro2::TokenStream;
 use syn::{
-    Error, FnArg, GenericArgument, ItemFn, PathArguments, Result, Signature, Type, TypePath,
+    Error, FnArg, GenericArgument, ItemFn, Pat, PathArguments, Result, Signature, Type, TypePath,
 };
+
+use super::utils::pat_to_ident;
 
 pub(crate) fn validate(ast: &ItemFn, attr: &TokenStream) -> Result<()> {
     if !ast.sig.generics.params.is_empty() {
@@ -71,19 +73,25 @@ fn validate_externals(exts: &FnArg) -> Result<()> {
     match exts {
         FnArg::Receiver(_) => Err(Error::new_spanned(exts, "Receiver is not supported")),
         FnArg::Typed(pat) => match &*pat.ty {
-            Type::Reference(_) => Ok(()),
-            Type::Tuple(tuple) => tuple.elems.iter().try_for_each(|ty| match ty {
-                Type::Reference(_) => Ok(()),
-                ty => Err(Error::new_spanned(
-                    ty,
-                    "type must contain only references (&T)",
-                )),
-            }),
-            ty => Err(Error::new_spanned(
-                ty,
-                "type must contain only references (&T)",
-            )),
+            Type::Tuple(_) => match &*pat.pat {
+                Pat::Tuple(tuple) => tuple
+                    .elems
+                    .iter()
+                    .try_for_each(|pat| validate_externals_name(pat)),
+                pat => validate_externals_name(pat),
+            },
+            _ => validate_externals_name(&*pat.pat),
         },
+    }
+}
+
+fn validate_externals_name(pat: &Pat) -> Result<()> {
+    match pat_to_ident(pat) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(Error::new_spanned(
+            pat,
+            "name of the external is specified incorrectly",
+        )),
     }
 }
 

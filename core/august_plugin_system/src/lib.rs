@@ -17,9 +17,9 @@ pub use loader::*;
 pub use manager::*;
 pub use plugin::*;
 
-use function::Request;
+use function::{Request, Function};
 
-pub type Registry<F> = Vec<Arc<F>>;
+pub type Registry<T> = Vec<Arc<dyn Function<Output = T>>>;
 pub type Requests = Vec<Request>;
 
 #[cfg(feature = "derive")]

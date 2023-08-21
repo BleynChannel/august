@@ -11,20 +11,19 @@ macro_rules! function_call {
 #[test]
 fn run() {
     use crate::{
-        function::{Arg, Function, StdFunction, StdFunctionResult},
+        function::{Arg, DynamicFunction, Function, FunctionOutput},
         variable::VariableType,
     };
 
     // Создание функции
-    let func = StdFunction::new(
+    let func = DynamicFunction::new(
         "add",
         vec![
             Arg::new("a", VariableType::I32),
             Arg::new("b", VariableType::I32),
         ],
         Some(Arg::new("c", VariableType::I32)),
-        vec![],
-        |_, args| -> StdFunctionResult {
+        |args| -> FunctionOutput {
             let a = args[0].parse_ref::<i32>();
             let b = args[1].parse_ref::<i32>();
 

@@ -38,7 +38,8 @@ mod tests {
     fn register_functions() {
         let mut loader = Loader::new();
         if let Err(e) = loader.context(move |mut ctx| {
-            ctx.register_functions(vec![add(), sub()]);
+            ctx.register_function(add());
+            ctx.register_function(sub());
             ctx.register_manager(VoidPluginManager::new())
         }) {
             panic!("{:?}: {}", e, e.to_string())
@@ -115,7 +116,8 @@ mod tests {
     fn common_call() {
         let mut loader = Loader::new();
         if let Err(e) = loader.context(move |mut ctx| {
-            ctx.register_functions(vec![add(), sub()]);
+            ctx.register_function(add());
+            ctx.register_function(sub());
             ctx.register_request(Request::new("main".to_string(), vec![], None));
             ctx.register_manager(LuaPluginManager::new())
         }) {

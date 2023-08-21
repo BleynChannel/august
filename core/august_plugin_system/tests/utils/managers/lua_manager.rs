@@ -7,7 +7,7 @@ use std::{
 
 use august_plugin_system::{
     context::LoadPluginContext,
-    function::{Arg, Function, StdFunction},
+    function::{Arg, DynamicFunction, FunctionOutput},
     utils::{ManagerResult, Ptr},
     variable::Variable,
     Manager, Plugin, PluginInfo, Registry, Requests,
@@ -18,7 +18,7 @@ pub struct LuaPluginManager {
     lua_refs: HashMap<String, Arc<Mutex<Lua>>>,
 }
 
-impl<'a> Manager<'a, StdFunction> for LuaPluginManager {
+impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
     fn format(&self) -> &str {
         "fpl"
     }
@@ -41,7 +41,7 @@ impl<'a> Manager<'a, StdFunction> for LuaPluginManager {
 
     fn load_plugin(
         &mut self,
-        mut context: LoadPluginContext<'a, StdFunction>,
+        mut context: LoadPluginContext<'a, FunctionOutput>,
     ) -> ManagerResult<()> {
         let id = context.plugin().info().id.clone();
 
@@ -68,7 +68,7 @@ impl<'a> Manager<'a, StdFunction> for LuaPluginManager {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, StdFunction>>) -> ManagerResult<()> {
+    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, FunctionOutput>>) -> ManagerResult<()> {
         println!(
             "FunctionPluginManager::unload_plugin - {:?}",
             plugin.as_ref().info().id
@@ -90,7 +90,7 @@ impl LuaPluginManager {
     fn registry_to_lua<'a>(
         &self,
         lua_context: Context,
-        registry: &Registry<StdFunction>,
+        registry: &Registry<FunctionOutput>,
     ) -> ManagerResult<()> {
         let globals = lua_context.globals();
 
@@ -114,7 +114,7 @@ impl LuaPluginManager {
                 }
             })?;
 
-            globals.set(function_name.as_str(), f)?;
+            globals.set(function_name, f)?;
         }
 
         Ok(())
@@ -133,7 +133,7 @@ impl LuaPluginManager {
         lua: &Arc<Mutex<Lua>>,
         lua_context: Context,
         requests: &Requests,
-    ) -> ManagerResult<Vec<StdFunction>> {
+    ) -> ManagerResult<Vec<DynamicFunction>> {
         let globals = lua_context.globals();
         let mut result = vec![];
 
@@ -143,8 +143,8 @@ impl LuaPluginManager {
                     let request_name = request.name().clone();
                     let lua = lua.clone();
 
-                    let function = StdFunction::new(
-                        request.name().as_str(),
+                    let function = DynamicFunction::new(
+                        request.name(),
                         request
                             .inputs()
                             .iter()
@@ -157,8 +157,7 @@ impl LuaPluginManager {
                         request
                             .output()
                             .map(|output| Arg::new("output", output.clone())),
-                        vec![],
-                        move |_, args| {
+                        move |args| {
                             let request_name = request_name.clone();
 
                             Ok(lua

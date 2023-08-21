@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use august_plugin_system::{
     context::LoadPluginContext,
-    function::Function,
     utils::{ManagerResult, Ptr},
     Loader, Manager, Plugin, PluginInfo,
 };
@@ -13,12 +12,12 @@ pub struct VoidPluginManager {
     configs: Vec<NativeConfig>,
 }
 
-impl<'a, F: Function> Manager<'a, F> for VoidPluginManager {
+impl<'a, T: Send + Sync> Manager<'a, T> for VoidPluginManager {
     fn format(&self) -> &str {
         "vpl"
     }
 
-    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, F>>) -> ManagerResult<()> {
+    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, T>>) -> ManagerResult<()> {
         println!("VoidPluginManager::register_manager");
         Ok(())
     }
@@ -36,7 +35,7 @@ impl<'a, F: Function> Manager<'a, F> for VoidPluginManager {
         Ok(info)
     }
 
-    fn unregister_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, F>>) -> ManagerResult<()> {
+    fn unregister_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, T>>) -> ManagerResult<()> {
         println!(
             "VoidPluginManager::unregister_plugin - {:?}",
             plugin.as_ref().path()
@@ -57,7 +56,7 @@ impl<'a, F: Function> Manager<'a, F> for VoidPluginManager {
         println!("VoidPluginManager::register_plugin_error");
     }
 
-    fn load_plugin(&mut self, context: LoadPluginContext<'a, F>) -> ManagerResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext<'a, T>) -> ManagerResult<()> {
         println!(
             "VoidPluginManager::load_plugin - {:?}",
             context.plugin().info().id
@@ -65,7 +64,7 @@ impl<'a, F: Function> Manager<'a, F> for VoidPluginManager {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, F>>) -> ManagerResult<()> {
+    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, T>>) -> ManagerResult<()> {
         println!(
             "VoidPluginManager::unload_plugin - {:?}",
             plugin.as_ref().info().id

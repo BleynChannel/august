@@ -3,7 +3,6 @@ use std::path::Path;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    function::Function,
     utils::{
         LoadPluginError, PluginCallRequest, Ptr, RegisterManagerError, RegisterPluginError,
         StopLoaderError, UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
@@ -12,14 +11,14 @@ use crate::{
     LoaderContext, Manager, Plugin, Registry, Requests,
 };
 
-pub struct Loader<'a, F: Function> {
-    managers: Vec<Box<dyn Manager<'a, F>>>,
-    pub(crate) registry: Registry<F>,
+pub struct Loader<'a, T: Send + Sync> {
+    managers: Vec<Box<dyn Manager<'a, T>>>,
+    pub(crate) registry: Registry<T>,
     pub(crate) requests: Requests,
-    plugins: Vec<Plugin<'a, F>>,
+    plugins: Vec<Plugin<'a, T>>,
 }
 
-impl<'a, F: Function> Loader<'a, F> {
+impl<'a, T: Send + Sync> Loader<'a, T> {
     pub const fn new() -> Self {
         Self {
             managers: vec![],
@@ -31,7 +30,7 @@ impl<'a, F: Function> Loader<'a, F> {
 
     pub fn context<FO, R>(&mut self, f: FO) -> R
     where
-        FO: FnOnce(LoaderContext<'a, '_, F>) -> R,
+        FO: FnOnce(LoaderContext<'a, '_, T>) -> R,
     {
         f(LoaderContext::new(self))
     }
@@ -44,14 +43,14 @@ impl<'a, F: Function> Loader<'a, F> {
 
     pub fn register_manager<M>(&mut self, manager: M) -> Result<(), RegisterManagerError>
     where
-        M: Manager<'a, F> + 'static,
+        M: Manager<'a, T> + 'static,
     {
         private_loader::register_manager(self, Box::new(manager))
     }
 
     pub fn register_managers<M>(&mut self, managers: M) -> Result<(), RegisterManagerError>
     where
-        M: IntoIterator<Item = Box<dyn Manager<'a, F>>>,
+        M: IntoIterator<Item = Box<dyn Manager<'a, T>>>,
     {
         managers
             .into_iter()
@@ -74,11 +73,11 @@ impl<'a, F: Function> Loader<'a, F> {
         }
     }
 
-    pub fn get_manager_ref(&self, format: &str) -> Option<&Box<dyn Manager<'a, F>>> {
+    pub fn get_manager_ref(&self, format: &str) -> Option<&Box<dyn Manager<'a, T>>> {
         self.managers.iter().find(|m| m.format() == format)
     }
 
-    pub fn get_manager_mut(&mut self, format: &str) -> Option<&mut Box<dyn Manager<'a, F>>> {
+    pub fn get_manager_mut(&mut self, format: &str) -> Option<&mut Box<dyn Manager<'a, T>>> {
         self.managers.iter_mut().find(|m| m.format() == format)
     }
 
@@ -124,19 +123,19 @@ impl<'a, F: Function> Loader<'a, F> {
     pub fn unregister_plugin(&mut self, id: &String) -> Result<(), UnregisterPluginError> {
         let plugin = self
             .get_plugin_mut(id)
-            .ok_or(UnregisterPluginError::NotFound)? as *mut Plugin<'a, F>;
+            .ok_or(UnregisterPluginError::NotFound)? as *mut Plugin<'a, T>;
         private_loader::unregister_plugin(self, plugin)
     }
 
     pub fn load_plugin(&mut self, id: &String) -> Result<(), LoadPluginError> {
         let plugin =
-            self.get_plugin_mut(id).ok_or(LoadPluginError::NotFound)? as *mut Plugin<'a, F>;
+            self.get_plugin_mut(id).ok_or(LoadPluginError::NotFound)? as *mut Plugin<'a, T>;
         private_loader::load_plugin(self, plugin)
     }
 
     pub fn unload_plugin(&mut self, id: &String) -> Result<(), UnloadPluginError> {
         let plugin =
-            self.get_plugin_mut(id).ok_or(UnloadPluginError::NotFound)? as *mut Plugin<'a, F>;
+            self.get_plugin_mut(id).ok_or(UnloadPluginError::NotFound)? as *mut Plugin<'a, T>;
         private_loader::unload_plugin(self, plugin)
     }
 
@@ -185,7 +184,7 @@ impl<'a, F: Function> Loader<'a, F> {
             })
             .collect::<Vec<Vec<String>>>();
 
-        let not_depend_plugin: Vec<*mut Plugin<'a, F>> = self
+        let not_depend_plugin: Vec<_> = self
             .plugins
             .iter_mut()
             .filter_map(move |plugin| {
@@ -195,7 +194,7 @@ impl<'a, F: Function> Loader<'a, F> {
                     .find(|depends| depends.iter().find(|depend| **depend == id).is_some())
                 {
                     Some(_) => None,
-                    None => Some(plugin as *mut Plugin<'a, F>),
+                    None => Some(plugin as *mut Plugin<'a, T>),
                 }
             })
             .collect();
@@ -208,19 +207,19 @@ impl<'a, F: Function> Loader<'a, F> {
         Ok(plugins)
     }
 
-    pub fn get_plugin(&self, id: &String) -> Option<&Plugin<'a, F>> {
+    pub fn get_plugin(&self, id: &String) -> Option<&Plugin<'a, T>> {
         self.plugins.iter().find(|plugin| plugin.info.id == *id)
     }
 
-    pub fn get_plugin_mut(&mut self, id: &String) -> Option<&mut Plugin<'a, F>> {
+    pub fn get_plugin_mut(&mut self, id: &String) -> Option<&mut Plugin<'a, T>> {
         self.plugins.iter_mut().find(|plugin| plugin.info.id == *id)
     }
 
-    pub const fn get_plugins(&self) -> &Vec<Plugin<'a, F>> {
+    pub const fn get_plugins(&self) -> &Vec<Plugin<'a, T>> {
         &self.plugins
     }
 
-    pub const fn get_registry(&self) -> &Registry<F> {
+    pub const fn get_registry(&self) -> &Registry<T> {
         &self.registry
     }
 
@@ -228,32 +227,27 @@ impl<'a, F: Function> Loader<'a, F> {
         &self.requests
     }
 
-    pub fn call_request(
-        &self,
-        name: &str,
-        args: &[Variable],
-    ) -> Result<Vec<F::CallResult>, PluginCallRequest> {
+    pub fn call_request(&self, name: &str, args: &[Variable]) -> Result<Vec<T>, PluginCallRequest> {
         self.plugins
             .iter()
             .map(|plugin| plugin.call_request(name, args))
-            .collect::<Result<Vec<F::CallResult>, PluginCallRequest>>()
+            .collect()
     }
 
     pub fn par_call_request(
         &self,
         name: &str,
         args: &[Variable],
-    ) -> Result<Vec<F::CallResult>, PluginCallRequest> {
+    ) -> Result<Vec<T>, PluginCallRequest> {
         self.plugins
             .par_iter()
             .map(|plugin| plugin.call_request(name, args))
-            .collect::<Result<Vec<F::CallResult>, PluginCallRequest>>()
+            .collect()
     }
 }
 
 mod private_loader {
     use crate::{
-        function::Function,
         utils::{
             LoadPluginError, Ptr, RegisterManagerError, StopLoaderError, UnloadPluginError,
             UnregisterManagerError, UnregisterPluginError,
@@ -261,8 +255,8 @@ mod private_loader {
         LoadPluginContext, Manager, Plugin, Registry, Requests,
     };
 
-    pub fn stop_plugins<F: Function>(
-        loader: &mut super::Loader<'_, F>,
+    pub fn stop_plugins<T: Send + Sync>(
+        loader: &mut super::Loader<'_, T>,
     ) -> Result<(), StopLoaderError> {
         // Сортируем плагины в порядке их зависимостей
         let sort_plugins = stop_sort_plugins(loader);
@@ -283,8 +277,8 @@ mod private_loader {
         }
     }
 
-    pub fn stop_managers<F: Function>(
-        loader: &mut super::Loader<'_, F>,
+    pub fn stop_managers<T: Send + Sync>(
+        loader: &mut super::Loader<'_, T>,
     ) -> Result<(), StopLoaderError> {
         // Открепляем менеджеры плагинов от загрузчика
         let mut errors = vec![];
@@ -301,9 +295,9 @@ mod private_loader {
     }
 
     // Продвинутая древовидная сортировка
-    pub fn stop_sort_plugins<'a, F: Function>(
-        loader: *mut super::Loader<'a, F>,
-    ) -> Vec<*mut Plugin<'a, F>> {
+    pub fn stop_sort_plugins<'a, T: Send + Sync>(
+        loader: *mut super::Loader<'a, T>,
+    ) -> Vec<*mut Plugin<'a, T>> {
         let mut result = vec![];
 
         let plugins_depends = unsafe { &*loader }
@@ -335,11 +329,11 @@ mod private_loader {
         result
     }
 
-    pub fn stop_sort_pick<'a, F: Function>(
-        loader: &mut super::Loader<'a, F>,
-        plugin: *mut Plugin<'a, F>,
-        mut result: Vec<*mut Plugin<'a, F>>,
-    ) -> Vec<*mut Plugin<'a, F>> {
+    pub fn stop_sort_pick<'a, T: Send + Sync>(
+        loader: &mut super::Loader<'a, T>,
+        plugin: *mut Plugin<'a, T>,
+        mut result: Vec<*mut Plugin<'a, T>>,
+    ) -> Vec<*mut Plugin<'a, T>> {
         result.push(plugin);
 
         let plugin_info = &unsafe { &*plugin }.info;
@@ -354,7 +348,7 @@ mod private_loader {
                 for plug in loader.plugins.iter_mut() {
                     let plug_info = &plug.info;
                     if plug_info.id == *depend {
-                        p = Some(plug as *mut Plugin<'a, F>);
+                        p = Some(plug as *mut Plugin<'a, T>);
                         continue;
                     }
 
@@ -375,9 +369,9 @@ mod private_loader {
         result
     }
 
-    pub fn register_manager<'a, F: Function>(
-        loader: &mut super::Loader<'a, F>,
-        mut manager: Box<dyn Manager<'a, F>>,
+    pub fn register_manager<'a, T: Send + Sync>(
+        loader: &mut super::Loader<'a, T>,
+        mut manager: Box<dyn Manager<'a, T>>,
     ) -> Result<(), RegisterManagerError> {
         if let Some(_) = loader
             .managers
@@ -395,8 +389,8 @@ mod private_loader {
         Ok(())
     }
 
-    pub fn unregister_manager<F: Function>(
-        loader: &mut super::Loader<'_, F>,
+    pub fn unregister_manager<T: Send + Sync>(
+        loader: &mut super::Loader<'_, T>,
         index: usize,
     ) -> Result<(), UnregisterManagerError> {
         let mut manager = loader.managers.remove(index);
@@ -410,9 +404,9 @@ mod private_loader {
         }
     }
 
-    pub fn unregister_plugin<'a, F: Function>(
-        loader: &mut super::Loader<'a, F>,
-        plugin: *mut Plugin<'a, F>,
+    pub fn unregister_plugin<'a, T: Send + Sync>(
+        loader: &mut super::Loader<'a, T>,
+        plugin: *mut Plugin<'a, T>,
     ) -> Result<(), UnregisterPluginError> {
         unload_plugin(loader, plugin.clone())?;
 
@@ -428,9 +422,9 @@ mod private_loader {
         Ok(())
     }
 
-    pub fn load_plugin<'a, F: Function>(
-        loader: &mut super::Loader<'a, F>,
-        plugin: *mut Plugin<'a, F>,
+    pub fn load_plugin<'a, T: Send + Sync>(
+        loader: &mut super::Loader<'a, T>,
+        plugin: *mut Plugin<'a, T>,
     ) -> Result<(), LoadPluginError> {
         if unsafe { &*plugin }.is_load {
             return Ok(());
@@ -468,7 +462,7 @@ mod private_loader {
             .as_mut()
             .load_plugin(LoadPluginContext::new(
                 Ptr::new(plugin),
-                Ptr::new(&mut loader.registry as *mut Registry<F>),
+                Ptr::new(&mut loader.registry as *mut Registry<T>),
                 Ptr::new(&mut loader.requests as *mut Requests),
             ))?;
 
@@ -480,7 +474,7 @@ mod private_loader {
                 match !loader
                     .requests
                     .iter()
-                    .any(|req| req.name() == request.name())
+                    .any(|req| *req.name() == request.name())
                 {
                     true => Some(request.name().to_string()),
                     false => None,
@@ -497,9 +491,9 @@ mod private_loader {
         Ok(())
     }
 
-    pub fn unload_plugin<'a, F: Function>(
-        loader: &mut super::Loader<'a, F>,
-        plugin: *mut Plugin<'a, F>,
+    pub fn unload_plugin<'a, T: Send + Sync>(
+        loader: &mut super::Loader<'a, T>,
+        plugin: *mut Plugin<'a, T>,
     ) -> Result<(), UnloadPluginError> {
         if unsafe { &*plugin }.is_load {
             loader.plugins.iter().try_for_each(|plug| {

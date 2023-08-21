@@ -4,16 +4,16 @@ use crate::{
     Plugin, Registry, Requests,
 };
 
-pub struct LoadPluginContext<'a, F: Function> {
-    pub(crate) plugin: Ptr<'a, Plugin<'a, F>>,
-    pub(crate) registry: Ptr<'a, Registry<F>>,
+pub struct LoadPluginContext<'a, T: Send + Sync> {
+    pub(crate) plugin: Ptr<'a, Plugin<'a, T>>,
+    pub(crate) registry: Ptr<'a, Registry<T>>,
     pub(crate) requests: Ptr<'a, Requests>,
 }
 
-impl<'a, F: Function> LoadPluginContext<'a, F> {
+impl<'a, T: Send + Sync> LoadPluginContext<'a, T> {
     pub(crate) const fn new(
-        plugin: Ptr<'a, Plugin<'a, F>>,
-        registry: Ptr<'a, Registry<F>>,
+        plugin: Ptr<'a, Plugin<'a, T>>,
+        registry: Ptr<'a, Registry<T>>,
         requests: Ptr<'a, Requests>,
     ) -> Self {
         Self {
@@ -23,11 +23,11 @@ impl<'a, F: Function> LoadPluginContext<'a, F> {
         }
     }
 
-    pub fn plugin(&self) -> &Plugin<'a, F> {
+    pub fn plugin(&self) -> &Plugin<'a, T> {
         self.plugin.as_ref()
     }
 
-    pub fn registry(&self) -> &Registry<F> {
+    pub fn registry(&self) -> &Registry<T> {
         self.registry.as_ref()
     }
 
@@ -35,13 +35,16 @@ impl<'a, F: Function> LoadPluginContext<'a, F> {
         self.requests.as_ref()
     }
 
-    pub fn register_request(&mut self, request: F) -> Result<(), RegisterRequestError> {
+    pub fn register_request<F>(&mut self, request: F) -> Result<(), RegisterRequestError>
+    where
+        F: Function<Output = T> + 'static,
+    {
         {
             if let Some(ord) = self
                 .requests
                 .as_ref()
                 .iter()
-                .find(|ord| ord.name() == request.name())
+                .find(|ord| *ord.name() == request.name())
             {
                 for input in ord.inputs().iter() {
                     request
@@ -59,7 +62,7 @@ impl<'a, F: Function> LoadPluginContext<'a, F> {
             }
         }
 
-        self.plugin.as_mut().requests.push(request);
+        self.plugin.as_mut().requests.push(Box::new(request));
 
         Ok(())
     }

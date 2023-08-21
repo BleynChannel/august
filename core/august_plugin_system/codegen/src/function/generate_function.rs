@@ -6,36 +6,34 @@ use crate::function::utils::{clear_ref, get_literal_type};
 
 pub(crate) fn generate_function(
     externals: &Vec<(Ident, &Type)>,
-    inputs: &Vec<(String, &Type)>,
+    inputs: &Vec<(Ident, &Type)>,
     output: &ReturnType,
     args: TokenStream,
     block: TokenStream,
 ) -> TokenStream {
-    let exts = serialize_exts(externals);
-    let ins = serialize_inputs(inputs);
+    let exts = generate_exts(externals);
+    let ins = generate_inputs(inputs);
     let call = function_call(exts, ins, output);
     let out = return_output(output);
 
     quote! {
-        move |exts, args| -> august_plugin_system::function::StdFunctionResult {
-            let func = move |#args| #output #block;
-            #call
-            #out
-        }
+        let func = move |#args| #output #block;
+		#call
+		#out
     }
 }
 
-fn serialize_exts(externals: &Vec<(Ident, &Type)>) -> TokenStream {
-    let exts: Vec<TokenStream> = (0..externals.len())
-        .map(|index| {
-            quote! { exts[#index].downcast_ref().ok_or("Failed to downcast")? }
+fn generate_exts(externals: &Vec<(Ident, &Type)>) -> TokenStream {
+    let exts: Vec<TokenStream> = externals.iter()
+        .map(|(name, _)| {
+            quote! { &self.#name }
         })
         .collect();
 
     quote! { (#(#exts), *) }
 }
 
-fn serialize_inputs(inputs: &Vec<(String, &Type)>) -> TokenStream {
+fn generate_inputs(inputs: &Vec<(Ident, &Type)>) -> TokenStream {
     let args: Vec<TokenStream> = inputs
         .iter()
         .enumerate()
