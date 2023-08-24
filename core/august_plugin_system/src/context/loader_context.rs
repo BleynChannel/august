@@ -22,6 +22,7 @@ impl<'a, 'b, T: Send + Sync> LoaderContext<'a, 'b, T> {
         self.loader.register_manager(manager)
     }
 
+	//TODO: Добавить параллельную версию метода
     pub fn register_managers<M>(&mut self, managers: M) -> Result<(), RegisterManagerError>
     where
         M: IntoIterator<Item = Box<dyn Manager<'a, T>>>,
@@ -33,6 +34,7 @@ impl<'a, 'b, T: Send + Sync> LoaderContext<'a, 'b, T> {
         self.loader.requests.push(request);
     }
 
+	//TODO: Добавить параллельную версию метода
     pub fn register_requests<I>(&mut self, requests: I)
     where
         I: IntoIterator<Item = Request>,
@@ -47,6 +49,7 @@ impl<'a, 'b, T: Send + Sync> LoaderContext<'a, 'b, T> {
         self.loader.registry.push(Arc::new(function));
     }
 
+	//TODO: Добавить параллельную версию метода
     pub fn register_functions<F, I>(&mut self, functions: I)
     where
         F: Function<Output = T> + 'static,

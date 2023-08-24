@@ -12,8 +12,8 @@ pub fn loader_init<'a>() -> Loader<'a, DynamicFunction> {
     loader
 }
 
-pub fn get_plugin_path(name: &str) -> PathBuf {
+pub fn get_plugin_path(id: &str, version: &str) -> PathBuf {
     std::env::current_dir()
         .unwrap()
-        .join(format!("../../../plugins/{name}/build/plugin.npl"))
+        .join(format!("../../../plugins/{id}/build/{id}-v{version}.npl"))
 }

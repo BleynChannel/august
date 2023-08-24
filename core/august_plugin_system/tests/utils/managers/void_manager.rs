@@ -1,15 +1,13 @@
-use std::path::PathBuf;
-
 use august_plugin_system::{
     context::LoadPluginContext,
     utils::{ManagerResult, Ptr},
-    Loader, Manager, Plugin, PluginInfo,
+    Info, Loader, Manager, Plugin, RegisterPluginContext,
 };
 
-use crate::utils::native_config::{load_config, NativeConfig};
+use crate::utils::config::{load_config, Config};
 
 pub struct VoidPluginManager {
-    configs: Vec<NativeConfig>,
+    configs: Vec<Config>,
 }
 
 impl<'a, T: Send + Sync> Manager<'a, T> for VoidPluginManager {
@@ -27,39 +25,26 @@ impl<'a, T: Send + Sync> Manager<'a, T> for VoidPluginManager {
         Ok(())
     }
 
-    fn register_plugin(&mut self, path: &PathBuf) -> ManagerResult<PluginInfo> {
-        let (config, info) = load_config(path)?;
+    fn register_plugin(&mut self, context: RegisterPluginContext) -> ManagerResult<Info> {
+        let (config, info) = load_config(context.path)?;
         self.configs.push(config);
 
-        println!("VoidPluginManager::register_plugin - {}", info.id);
+        println!("VoidPluginManager::register_plugin - {}", context.bundle.id);
         Ok(info)
     }
 
     fn unregister_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, T>>) -> ManagerResult<()> {
         println!(
             "VoidPluginManager::unregister_plugin - {:?}",
-            plugin.as_ref().path()
+            plugin.as_ref().info().path
         );
         Ok(())
-    }
-
-    fn register_plugin_error(&mut self, info: PluginInfo) {
-        if let Some(index) = self.configs.iter().enumerate().find_map(|(index, config)| {
-            if config.id == info.id {
-                return Some(index);
-            }
-            None
-        }) {
-            self.configs.remove(index);
-        }
-
-        println!("VoidPluginManager::register_plugin_error");
     }
 
     fn load_plugin(&mut self, context: LoadPluginContext<'a, T>) -> ManagerResult<()> {
         println!(
             "VoidPluginManager::load_plugin - {:?}",
-            context.plugin().info().id
+            context.plugin().info().bundle.id
         );
         Ok(())
     }
@@ -67,7 +52,7 @@ impl<'a, T: Send + Sync> Manager<'a, T> for VoidPluginManager {
     fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, T>>) -> ManagerResult<()> {
         println!(
             "VoidPluginManager::unload_plugin - {:?}",
-            plugin.as_ref().info().id
+            plugin.as_ref().info().bundle.id
         );
         Ok(())
     }

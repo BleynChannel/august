@@ -1,10 +1,11 @@
-use std::{env::consts::OS, path::PathBuf};
+use std::env::consts::OS;
 
 use crate::{config::NativeConfig, Plugin};
 use august_plugin_system::{
     context::LoadPluginContext,
-    utils::{ManagerResult, Ptr},
-    Loader, Manager, Plugin as StdPlugin, PluginInfo, function::Function,
+    function::Function,
+    utils::{bundle::Bundle, ManagerResult, Ptr},
+    Depend, Info, Loader, Manager, Plugin as StdPlugin, RegisterPluginContext,
 };
 use libloading::Library;
 
@@ -17,15 +18,8 @@ impl NativePluginManager {
         Self { plugins: vec![] }
     }
 
-    fn remove_plugin(&mut self, info: &PluginInfo) {
-        if let Some(index) = self.plugins.iter().enumerate().find_map(|(index, plugin)| {
-            if plugin.info == *info {
-                return Some(index);
-            }
-            None
-        }) {
-            self.plugins.remove(index);
-        }
+    fn remove_plugin(&mut self, bundle: &Bundle) {
+        self.plugins.retain(|plugin| plugin.bundle == *bundle);
     }
 }
 
@@ -41,27 +35,30 @@ impl<'a, F: Function> Manager<'a, F> for NativePluginManager {
         Ok(())
     }
 
-    fn register_plugin(&mut self, path: &PathBuf) -> ManagerResult<PluginInfo> {
-        let config = NativeConfig::load(path)?;
-        let info = PluginInfo {
-            id: config.id.clone(),
-            depends: config.depends.clone().map_or(vec![], |v| v.clone()),
-            optional_depends: config
-                .optional_depends
-                .clone()
-                .map_or(vec![], |v| v.clone()),
+    fn register_plugin(&mut self, context: RegisterPluginContext) -> ManagerResult<Info> {
+        let config = NativeConfig::load(context.path)?;
+        let info = Info {
+            depends: config.depends.clone().map_or(vec![], |depends| {
+                depends
+                    .into_iter()
+                    .map(|(id, version)| Depend::new(id, version))
+                    .collect()
+            }),
+            optional_depends: config.optional_depends.clone().map_or(vec![], |depends| {
+                depends
+                    .into_iter()
+                    .map(|(id, version)| Depend::new(id, version))
+                    .collect()
+            }),
         };
 
-        self.plugins.push(Plugin::new(info.clone(), config));
+        self.plugins
+            .push(Plugin::new(context.bundle.clone(), info.clone(), config));
         Ok(info)
     }
     fn unregister_plugin(&mut self, plugin: Ptr<'a, StdPlugin<'a, F>>) -> ManagerResult<()> {
-        self.remove_plugin(&plugin.as_ref().info());
+        self.remove_plugin(&plugin.as_ref().info().bundle);
         Ok(())
-    }
-
-    fn register_plugin_error(&mut self, info: PluginInfo) {
-        self.remove_plugin(&info);
     }
 
     fn load_plugin(&mut self, context: LoadPluginContext<'a, F>) -> ManagerResult<()> {
@@ -78,16 +75,17 @@ impl<'a, F: Function> Manager<'a, F> for NativePluginManager {
         unsafe {
             library = Library::new(
                 plugin
-                    .path()
+                    .info()
+                    .path
                     .join(OS.to_string() + "/" + script)
                     .as_os_str(),
             )?;
         }
 
-        let info = plugin.info();
+        let bundle = &plugin.info().bundle;
         self.plugins
             .iter_mut()
-            .find(|p| p.info == *info)
+            .find(|p| p.bundle == *bundle)
             .unwrap()
             .library = Some(library);
 
@@ -95,10 +93,10 @@ impl<'a, F: Function> Manager<'a, F> for NativePluginManager {
     }
 
     fn unload_plugin(&mut self, plugin: Ptr<'a, StdPlugin<'a, F>>) -> ManagerResult<()> {
-        let info = plugin.as_ref().info();
+        let bundle = &plugin.as_ref().info().bundle;
         self.plugins
             .iter_mut()
-            .find(|p| p.info == *info)
+            .find(|p| p.bundle == *bundle)
             .unwrap()
             .library
             .take();

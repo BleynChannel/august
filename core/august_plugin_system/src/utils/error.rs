@@ -1,8 +1,59 @@
+use semver::Version;
 use std::{
     error::Error as StdError,
     fmt::{Debug, Display},
 };
 use thiserror::Error;
+
+use crate::Depend;
+
+use super::bundle::Bundle;
+
+#[derive(Error, Debug)]
+pub enum BundleFromError {
+    #[error("Error converting OsStr to str")]
+    OsStrToStrFailed,
+    #[error("Failed to get ID")]
+    IDFailed,
+    #[error("Failed to get version")]
+    VersionFailed,
+    #[error("Failed to get format")]
+    FormatFailed,
+	#[error("Failed to parse version")]
+	ParseVersion(#[from] semver::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum BundleZipError {
+    #[error("Bundle has no name")]
+    NoNameFailed,
+    #[error("Missing bundle")]
+    MissingBundleFailed,
+    #[error("The directory contains a directory with the same name as the bundle")]
+    ContainSameDirFailed,
+    #[error("Failed to create bundle")]
+    CreateBundleFailed(std::io::Error),
+    #[error("Failed to open file in bundle")]
+    OpenFileInBundleFailed(#[from] std::io::Error),
+    #[error("Failed to zip")]
+    ZipFailed(#[from] zip::result::ZipError),
+}
+
+#[derive(Error, Debug)]
+pub enum BundleUnzipError {
+    #[error("Bundle has no name")]
+    NoNameFailed,
+    #[error("Missing bundle")]
+    MissingBundleFailed,
+    #[error("The directory contains a file with the same name as the bundle")]
+    ContainSameFileFailed,
+    #[error("Failed to open bundle")]
+    OpenBundleFailed(#[from] std::io::Error),
+    #[error("Failed to unzip")]
+    UnzipFailed(#[from] zip::result::ZipError),
+    #[error("Error creating BundleInfo")]
+    BundleFromFailed(#[from] BundleFromError),
+}
 
 #[derive(Error, Debug)]
 pub enum StopLoaderError {
@@ -24,6 +75,8 @@ pub enum RegisterManagerError {
 pub enum UnregisterManagerError {
     #[error("Not found manager")]
     NotFound,
+    #[error("Failed to unregister plugin")]
+    UnregisterPlugin(#[from] UnregisterPluginError),
     #[error("Manager unregistration error by the manager")]
     UnregisterManagerByManager(#[from] Box<dyn StdError + Send + Sync>),
 }
@@ -32,14 +85,14 @@ pub enum UnregisterManagerError {
 pub enum RegisterPluginError {
     #[error("Not found plugin")]
     NotFound,
-    #[error("Unpack error: {0}")]
-    UnpackError(String),
+    #[error("Failed to bundle from filename")]
+    BundleFromFailed(#[from] BundleFromError),
     #[error("Unknown plugin manager for the format '{0}'")]
     UnknownManagerFormat(String),
     #[error("Plugin registration error by the manager")]
     RegisterPluginByManager(#[from] Box<dyn StdError + Send + Sync>),
-    #[error("A plugin with this ID already exists")]
-    AlreadyExistsID(String),
+    #[error("A plugin with ID `{0}` and version `{1}` already exists")]
+    AlreadyExistsIDAndVersion(String, Version),
 }
 
 #[derive(Error, Debug)]
@@ -59,10 +112,10 @@ pub enum LoadPluginError {
     #[error("Not found plugin")]
     NotFound,
     #[error("The following dependencies could not be found: {0:?}")]
-    NotFoundDependencies(Vec<String>),
-    #[error("Dependency `{depend:?}` returned an error: {error:?}")]
+    NotFoundDependencies(Vec<Depend>),
+    #[error("Dependency `{depend}` returned an error: {error:?}")]
     LoadDependency {
-        depend: String,
+        depend: Depend,
         error: Box<LoadPluginError>,
     },
     #[error("Plugin load error by the manager")]
@@ -75,8 +128,8 @@ pub enum LoadPluginError {
 pub enum UnloadPluginError {
     #[error("Not found plugin")]
     NotFound,
-    #[error("The plugin is dependent on plugin `{0}`")]
-    DependentOnAnotherPlugin(String),
+    #[error("The plugin `{plugin}` currently uses the plugin `{depend}` as a dependency")]
+    CurrentlyUsesDepend { plugin: Bundle, depend: Bundle },
     #[error("Plugin unload error by the manager")]
     UnloadPluginByManager(#[from] Box<dyn StdError + Send + Sync>),
 }

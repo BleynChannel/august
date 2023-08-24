@@ -1,17 +1,17 @@
+mod config;
 mod managers;
-mod native_config;
 pub use managers::*;
 
-pub use native_config::*;
+pub use config::*;
 
 use std::path::PathBuf;
 
 use august_plugin_system::{function::DynamicFunction, Loader, Manager};
 
-pub fn get_plugin_path(name: &str, format: &str) -> PathBuf {
+pub fn get_plugin_path(id: &str, version: &str, format: &str) -> PathBuf {
     std::env::current_dir()
         .unwrap()
-        .join(format!("../../plugins/{name}/plugin.{format}"))
+        .join(format!("../../plugins/{id}-v{version}.{format}"))
 }
 
 #[allow(dead_code)]

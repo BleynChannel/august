@@ -8,14 +8,14 @@ use std::{
 use august_plugin_system::{
     context::LoadPluginContext,
     function::{Arg, DynamicFunction, FunctionOutput},
-    utils::{ManagerResult, Ptr},
+    utils::{bundle::Bundle, ManagerResult, Ptr},
     variable::Variable,
-    Manager, Plugin, PluginInfo, Registry, Requests,
+    Manager, Plugin, Registry, Requests,
 };
 use rlua::{Context, Lua, MultiValue, ToLua, Value};
 
 pub struct LuaPluginManager {
-    lua_refs: HashMap<String, Arc<Mutex<Lua>>>,
+    lua_refs: HashMap<Bundle, Arc<Mutex<Lua>>>,
 }
 
 impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
@@ -23,39 +23,23 @@ impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
         "fpl"
     }
 
-    fn register_plugin(&mut self, path: &PathBuf) -> ManagerResult<PluginInfo> {
-        let info = PluginInfo::new(
-            path.parent()
-                .unwrap()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
-        );
-
-        println!("FunctionPluginManager::register_plugin - {}", info.id);
-
-        Ok(info)
-    }
-
     fn load_plugin(
         &mut self,
         mut context: LoadPluginContext<'a, FunctionOutput>,
     ) -> ManagerResult<()> {
-        let id = context.plugin().info().id.clone();
+        let bundle = &context.plugin().info().bundle;
 
-        println!("FunctionPluginManager::load_plugin - {:?}", id.clone());
+        println!("FunctionPluginManager::load_plugin - {:?}", bundle.clone());
 
         self.lua_refs
-            .insert(id.clone(), Arc::new(Mutex::new(Lua::new())));
-        let lua = self.lua_refs.get(&id).unwrap();
+            .insert(bundle.clone(), Arc::new(Mutex::new(Lua::new())));
+        let lua = self.lua_refs.values().last().unwrap();
 
         lua.lock()
             .unwrap()
             .context(|lua_context| -> ManagerResult<_> {
                 self.registry_to_lua(lua_context, context.registry())?;
-                self.load_src(lua_context, context.plugin().path().clone())?;
+                self.load_src(lua_context, context.plugin().info().path.clone())?;
 
                 let requests = self.register_requests(lua, lua_context, context.requests())?;
                 for request in requests {
@@ -69,12 +53,11 @@ impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
     }
 
     fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, FunctionOutput>>) -> ManagerResult<()> {
-        println!(
-            "FunctionPluginManager::unload_plugin - {:?}",
-            plugin.as_ref().info().id
-        );
+        let bundle = &plugin.as_ref().info().bundle;
 
-        Ok(drop(self.lua_refs.remove(&plugin.as_ref().info().id)))
+        println!("FunctionPluginManager::unload_plugin - {:?}", bundle.id);
+
+        Ok(drop(self.lua_refs.remove(bundle)))
     }
 }
 
@@ -138,15 +121,15 @@ impl LuaPluginManager {
         let mut result = vec![];
 
         for request in requests.iter() {
-            match globals.get(request.name().clone())? {
+            match globals.get(request.name.clone())? {
                 Value::Function(_) => {
-                    let request_name = request.name().clone();
+                    let request_name = request.name.clone();
                     let lua = lua.clone();
 
                     let function = DynamicFunction::new(
-                        request.name(),
+                        request.name.clone(),
                         request
-                            .inputs()
+                            .inputs
                             .iter()
                             .enumerate()
                             .map(|(index, ty)| {
@@ -155,7 +138,7 @@ impl LuaPluginManager {
                             })
                             .collect(),
                         request
-                            .output()
+                            .output
                             .map(|output| Arg::new("output", output.clone())),
                         move |args| {
                             let request_name = request_name.clone();
@@ -182,9 +165,9 @@ impl LuaPluginManager {
                     result.push(function);
                 }
                 Value::Nil => {
-                    return Err(format!("Функции `{}` не существует", request.name()).into())
+                    return Err(format!("Функции `{}` не существует", request.name).into())
                 }
-                _ => return Err(format!("`{}` должна быть функцией", request.name()).into()),
+                _ => return Err(format!("`{}` должна быть функцией", request.name).into()),
             }
         }
 

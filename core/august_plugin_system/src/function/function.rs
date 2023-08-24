@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use crate::variable::Variable;
 
 use super::Arg;
@@ -9,6 +11,36 @@ pub trait Function: Send + Sync {
     fn inputs(&self) -> Vec<Arg>;
     fn output(&self) -> Option<Arg>;
     fn call(&self, args: &[Variable]) -> Self::Output;
+}
+
+impl<T: Send + Sync> Display for dyn Function<Output = T> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		//TODO: Внедрить описание функций в August
+        // // Комментарий в виде описания функции
+        // write!(f, "# {}\n", self.description);
+
+        // Функция
+        write!(
+            f,
+            "{}({}) -> {}",
+            self.name(),
+            self.inputs()
+                .iter()
+                .map(|x| format!("{x}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            match self.output() {
+                Some(arg) => format!("{}({})", arg.name, arg.ty),
+                None => "void".to_string(),
+            }
+        )
+	}
+}
+
+impl<T: Send + Sync> Debug for dyn Function<Output = T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		Display::fmt(self, f)
+    }
 }
 
 pub type FunctionOutput = Result<Option<Variable>, Box<dyn std::error::Error + Send + Sync>>;
@@ -52,27 +84,6 @@ impl Function for DynamicFunction {
 
     fn call(&self, args: &[Variable]) -> Self::Output {
         (self.ptr)(args)
-    }
-}
-
-impl std::fmt::Debug for DynamicFunction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        //TODO: Внедрить описание функций в August
-        // // Комментарий в виде описания функции
-        // f.write_str("# ")?;
-        // f.write_str(self.description.as_str())?;
-        // f.write_char('\n')?;
-
-        // Функция
-        f.write_str(self.name.as_str())?;
-        f.write_str(format!("({:?})", self.inputs).as_str())?;
-        f.write_str(" -> ")?;
-
-        if let Some(arg) = &self.output {
-            return f.write_str(format!("{:?}", arg).as_str());
-        } else {
-            return f.write_str("void");
-        }
     }
 }
 

@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 august_plugin_system = { path = "../../august_plugin_system" }
 libloading = "0.8.0"
+semver = "1.0.18"
 serde = "1.0.162"
 thiserror = "1.0.40"
 toml = "0.7.3"

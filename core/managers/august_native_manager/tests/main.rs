@@ -18,7 +18,7 @@ mod main {
         let mut loader = loader_init();
 
         loader
-            .load_plugin_now(get_plugin_path("native_plugin").to_str().unwrap())
+            .load_plugin_now(get_plugin_path("native_plugin", "1.0.0").to_str().unwrap())
             .unwrap();
 
         if let Err(e) = loader.stop() {

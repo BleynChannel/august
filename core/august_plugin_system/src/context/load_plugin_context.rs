@@ -44,17 +44,17 @@ impl<'a, T: Send + Sync> LoadPluginContext<'a, T> {
                 .requests
                 .as_ref()
                 .iter()
-                .find(|ord| *ord.name() == request.name())
+                .find(|ord| *ord.name == request.name())
             {
-                for input in ord.inputs().iter() {
+                for input in ord.inputs.iter() {
                     request
                         .inputs()
                         .iter()
-                        .find(|arg| *input == arg.ty())
+                        .find(|arg| *input == arg.ty)
                         .ok_or(RegisterRequestError::ArgumentsIncorrectly)?;
                 }
 
-                if *ord.output() != request.output().as_ref().map(|arg| arg.ty()) {
+                if ord.output != request.output().map(|arg| arg.ty) {
                     return Err(RegisterRequestError::ArgumentsIncorrectly);
                 }
             } else {

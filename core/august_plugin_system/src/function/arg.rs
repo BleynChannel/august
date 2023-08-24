@@ -1,9 +1,13 @@
+use std::fmt::Display;
+
+use serde::{Deserialize, Serialize};
+
 use crate::variable::VariableType;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Arg {
-    name: String,
-    ty: VariableType,
+    pub name: String,
+    pub ty: VariableType,
 }
 
 impl Arg {
@@ -13,12 +17,19 @@ impl Arg {
             ty,
         }
     }
+}
 
-    pub const fn name(&self) -> &String {
-        &self.name
+impl Default for Arg {
+    fn default() -> Self {
+        Self {
+            name: "arg".to_string(),
+            ty: Default::default(),
+        }
     }
+}
 
-    pub const fn ty(&self) -> VariableType {
-        self.ty
+impl Display for Arg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.name, self.ty)
     }
 }

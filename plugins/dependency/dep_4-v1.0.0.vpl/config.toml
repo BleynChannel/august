@@ -1,8 +1,10 @@
-id = "dep_2"
-name = "Depend 2"
+name = "Depend 4"
 description = "Плагин для тестирования загрузки и выгрузки зависимых плагинов"
-version = "1.0.0"
 author = "Bleyn"
 license = "MIT"
-depends = ["dep_1"]
-optional_depends = []
+
+[depends]
+dep_1 = "1.0.0"
+
+[optional_depends]
+dep_3 = "1.0.0"

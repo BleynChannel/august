@@ -64,7 +64,11 @@ mod tests {
             panic!("{:?}: {}", e, e.to_string())
         };
 
-        match loader.load_plugin_now(get_plugin_path("function_plugin", "fpl").to_str().unwrap()) {
+        match loader.load_plugin_now(
+            get_plugin_path("function_plugin", "1.0.0", "fpl")
+                .to_str()
+                .unwrap(),
+        ) {
             Ok(_) => (),
             Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
@@ -88,10 +92,12 @@ mod tests {
             panic!("{:?}: {}", e, e.to_string())
         };
 
-        let plugin = match loader
-            .load_plugin_now(get_plugin_path("function_plugin", "fpl").to_str().unwrap())
-        {
-            Ok(plugin_id) => loader.get_plugin(&plugin_id).unwrap(),
+        let plugin = match loader.load_plugin_now(
+            get_plugin_path("function_plugin", "1.0.0", "fpl")
+                .to_str()
+                .unwrap(),
+        ) {
+            Ok(bundle) => loader.get_plugin_by_bundle(&bundle).unwrap(),
             Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, _)) => panic!("Unexpected error"),
@@ -124,10 +130,12 @@ mod tests {
             panic!("{:?}: {}", e, e.to_string())
         };
 
-        let plugin = match loader
-            .load_plugin_now(get_plugin_path("function_plugin", "fpl").to_str().unwrap())
-        {
-            Ok(plugin_id) => loader.get_plugin(&plugin_id).unwrap(),
+        let plugin = match loader.load_plugin_now(
+            get_plugin_path("function_plugin", "1.0.0", "fpl")
+                .to_str()
+                .unwrap(),
+        ) {
+            Ok(bundle) => loader.get_plugin_by_bundle(&bundle).unwrap(),
             Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, _)) => panic!("Unexpected error"),
@@ -156,7 +164,11 @@ mod tests {
             panic!("{:?}: {}", e, e.to_string())
         };
 
-        match loader.load_plugin_now(get_plugin_path("function_plugin", "fpl").to_str().unwrap()) {
+        match loader.load_plugin_now(
+            get_plugin_path("function_plugin", "1.0.0", "fpl")
+                .to_str()
+                .unwrap(),
+        ) {
             Ok(_) => (),
             Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
             Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
@@ -195,19 +207,20 @@ mod tests {
         };
 
         let plugins_result = loader.load_plugins([
-            get_plugin_path("parallel_plugins/one_plugin", "fpl")
+            get_plugin_path("parallel_plugins/one_plugin", "1.0.0", "fpl")
                 .to_str()
                 .unwrap(),
-            get_plugin_path("parallel_plugins/two_plugin", "fpl")
+            get_plugin_path("parallel_plugins/two_plugin", "1.0.0", "fpl")
                 .to_str()
                 .unwrap(),
         ]);
 
         match plugins_result {
             Ok(_) => (),
-            Err((Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
-            Err((_, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
-            Err((_, _)) => panic!("Unexpected error"),
+            Err((Some(e), _, _)) => panic!("{:?}: {}", e, e.to_string()),
+            Err((_, Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
+            Err((_, _, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
+            Err((_, _, _)) => panic!("Unexpected error"),
         };
 
         let (duration, result) = benchmark(|| loader.call_request("main", &[10.into()]));

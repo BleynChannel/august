@@ -15,7 +15,7 @@ workspace = get_env CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY
 name_project = get_env CARGO_MAKE_CRATE_NAME
 
 fn get_plugin_path
-	handle = glob_array ./plugin.*
+	handle = glob_array ./native_plugin-v1.0.0.*
 	for entry in ${handle}
 		if is_dir ${entry}
 			return ${entry}

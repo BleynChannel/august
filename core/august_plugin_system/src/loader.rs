@@ -1,11 +1,11 @@
-use std::path::Path;
-
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use semver::Version;
 
 use crate::{
     utils::{
-        LoadPluginError, PluginCallRequest, Ptr, RegisterManagerError, RegisterPluginError,
-        StopLoaderError, UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
+        bundle::Bundle, LoadPluginError, PluginCallRequest, RegisterManagerError,
+        RegisterPluginError, StopLoaderError, UnloadPluginError, UnregisterManagerError,
+        UnregisterPluginError,
     },
     variable::Variable,
     LoaderContext, Manager, Plugin, Registry, Requests,
@@ -81,75 +81,70 @@ impl<'a, T: Send + Sync> Loader<'a, T> {
         self.managers.iter_mut().find(|m| m.format() == format)
     }
 
-    pub fn register_plugin(&mut self, path: &str) -> Result<String, RegisterPluginError> {
-        let path = Path::new(path).to_path_buf();
-
-        if !path.exists() {
-            return Err(RegisterPluginError::NotFound);
-        }
-        if !path.is_dir() {
-            return Err(RegisterPluginError::UnpackError(
-                "Not a directory".to_string(),
-            ));
-        }
-
-        // Получаем формат плагина и ищем подходящий менеджер
-        if let Some(plugin_format) = path.extension() {
-            let plugin_format = plugin_format.to_str().unwrap();
-
-            let manager = self.get_manager_mut(plugin_format).ok_or(
-                RegisterPluginError::UnknownManagerFormat(plugin_format.to_string()),
-            )?;
-            let manager_ptr = Ptr::<'a>::new(manager);
-
-            let info = manager_ptr.as_mut().register_plugin(&path)?;
-            let id_clone = info.id.clone();
-
-            if self.get_plugin(&id_clone).is_some() {
-                manager_ptr.as_mut().register_plugin_error(info);
-                return Err(RegisterPluginError::AlreadyExistsID(id_clone));
-            }
-
-            // Регистрируем плагин
-            self.plugins
-                .push(Plugin::<'a>::new(manager_ptr, path, info));
-
-            return Ok(id_clone);
-        } else {
-            return Err(RegisterPluginError::UnknownManagerFormat("".to_string()));
-        }
+    pub fn register_plugin(&mut self, path: &str) -> Result<Bundle, RegisterPluginError> {
+        private_loader::register_plugin(self, path)
     }
 
-    pub fn unregister_plugin(&mut self, id: &String) -> Result<(), UnregisterPluginError> {
+    pub fn unregister_plugin(
+        &mut self,
+        id: &str,
+        version: &Version,
+    ) -> Result<(), UnregisterPluginError> {
         let plugin = self
-            .get_plugin_mut(id)
+            .get_plugin_mut(id, version)
             .ok_or(UnregisterPluginError::NotFound)? as *mut Plugin<'a, T>;
         private_loader::unregister_plugin(self, plugin)
     }
 
-    pub fn load_plugin(&mut self, id: &String) -> Result<(), LoadPluginError> {
-        let plugin =
-            self.get_plugin_mut(id).ok_or(LoadPluginError::NotFound)? as *mut Plugin<'a, T>;
+    pub fn unregister_plugin_by_bundle(
+        &mut self,
+        bundle: &Bundle,
+    ) -> Result<(), UnregisterPluginError> {
+        let plugin = self
+            .get_plugin_mut_by_bundle(bundle)
+            .ok_or(UnregisterPluginError::NotFound)? as *mut Plugin<'a, T>;
+        private_loader::unregister_plugin(self, plugin)
+    }
+
+    pub fn load_plugin(&mut self, id: &str, version: &Version) -> Result<(), LoadPluginError> {
+        let plugin = self
+            .get_plugin_mut(id, version)
+            .ok_or(LoadPluginError::NotFound)? as *mut Plugin<'a, T>;
         private_loader::load_plugin(self, plugin)
     }
 
-    pub fn unload_plugin(&mut self, id: &String) -> Result<(), UnloadPluginError> {
-        let plugin =
-            self.get_plugin_mut(id).ok_or(UnloadPluginError::NotFound)? as *mut Plugin<'a, T>;
+    pub fn load_plugin_by_bundle(&mut self, bundle: &Bundle) -> Result<(), LoadPluginError> {
+        let plugin = self
+            .get_plugin_mut_by_bundle(bundle)
+            .ok_or(LoadPluginError::NotFound)? as *mut Plugin<'a, T>;
+        private_loader::load_plugin(self, plugin)
+    }
+
+    pub fn unload_plugin(&mut self, id: &str, version: &Version) -> Result<(), UnloadPluginError> {
+        let plugin = self
+            .get_plugin_mut(id, version)
+            .ok_or(UnloadPluginError::NotFound)? as *mut Plugin<'a, T>;
+        private_loader::unload_plugin(self, plugin)
+    }
+
+    pub fn unload_plugin_by_bundle(&mut self, bundle: &Bundle) -> Result<(), UnloadPluginError> {
+        let plugin = self
+            .get_plugin_mut_by_bundle(bundle)
+            .ok_or(UnloadPluginError::NotFound)? as *mut Plugin<'a, T>;
         private_loader::unload_plugin(self, plugin)
     }
 
     pub fn load_plugin_now(
         &mut self,
         path: &str,
-    ) -> Result<String, (Option<RegisterPluginError>, Option<LoadPluginError>)> {
+    ) -> Result<Bundle, (Option<RegisterPluginError>, Option<LoadPluginError>)> {
         match self.register_plugin(path) {
-            Ok(plugin) => {
-                if let Err(e) = self.load_plugin(&plugin) {
+            Ok(bundle) => {
+                if let Err(e) = self.load_plugin_by_bundle(&bundle) {
                     return Err((None, Some(e)));
                 }
 
-                return Ok(plugin);
+                return Ok(bundle);
             }
             Err(e) => {
                 return Err((Some(e), None));
@@ -157,62 +152,115 @@ impl<'a, T: Send + Sync> Loader<'a, T> {
         }
     }
 
+    //TODO: Добавить параллельную версию метода
     pub fn load_plugins<'b, P>(
         &mut self,
         plugin_paths: P,
-    ) -> Result<Vec<String>, (Option<RegisterPluginError>, Option<LoadPluginError>)>
+    ) -> Result<
+        Vec<Bundle>,
+        (
+            Option<RegisterPluginError>,
+            Option<UnregisterPluginError>,
+            Option<LoadPluginError>,
+        ),
+    >
     where
         P: IntoIterator<Item = &'b str>,
     {
-        let mut plugins = vec![];
+        let mut infos = vec![];
 
         for path in plugin_paths {
-            plugins.push(self.register_plugin(path).map_err(|e| (Some(e), None))?);
+            infos.push(
+                self.register_plugin(path)
+                    .map_err(|e| (Some(e), None, None))?,
+            );
         }
 
         // Перебор плагинов, которые не являются зависимостями для других плагинов
-        let plugins_depends = self
-            .plugins
-            .iter()
-            .map(|p| {
-                p.info
-                    .depends
-                    .iter()
-                    .chain(p.info.optional_depends.iter())
-                    .map(|d| d.clone())
-                    .collect::<Vec<String>>()
-            })
-            .collect::<Vec<Vec<String>>>();
+        let mut result = vec![];
+        let mut unregistered_plugins = vec![];
 
-        let not_depend_plugin: Vec<_> = self
-            .plugins
-            .iter_mut()
-            .filter_map(move |plugin| {
-                let id = plugin.info.id.clone();
-                match plugins_depends
-                    .iter()
-                    .find(|depends| depends.iter().find(|depend| **depend == id).is_some())
-                {
-                    Some(_) => None,
-                    None => Some(plugin as *mut Plugin<'a, T>),
+        'outer: for (index, plugin) in self.plugins.iter().enumerate() {
+            let bundle = &plugin.info.bundle;
+
+            let find_plugin = self
+                .plugins
+                .iter()
+                .find(|pl| {
+                    pl.info
+                        .info
+                        .depends
+                        .iter()
+                        .chain(pl.info.info.optional_depends.iter())
+                        .any(|d| *d == *bundle)
+                })
+                .is_some();
+            if !find_plugin {
+                // Убираем неиспользуемые версии плагинов
+                //TODO: Протестировать данный участок
+                let id = &bundle.id;
+                let version = &bundle.version;
+                for pl in self.plugins.iter() {
+                    if pl.info.bundle.id == *id && pl.info.bundle.version > *version {
+                        unregistered_plugins.push(plugin.info.bundle.clone());
+                        continue 'outer;
+                    }
                 }
-            })
-            .collect();
 
-        // Загрузка плагинов и их зависимостей
-        not_depend_plugin.into_iter().try_for_each(|plugin| {
-            private_loader::load_plugin(self, plugin).map_err(|e| (None, Some(e)))
+                result.push(index);
+            }
+        }
+
+        // Выгружаем неиспользуемые версии плагинов
+        unregistered_plugins.into_iter().try_for_each(|bundle| {
+            self.unregister_plugin_by_bundle(&bundle)
+                .map_err(|e| (None, Some(e), None))
         })?;
 
-        Ok(plugins)
+        result.into_iter().try_for_each(|index| {
+            let plugin = &mut self.plugins[index] as *mut Plugin<'a, T>;
+            private_loader::load_plugin(self, plugin).map_err(|e| (None, None, Some(e)))
+        })?;
+
+        Ok(infos)
     }
 
-    pub fn get_plugin(&self, id: &String) -> Option<&Plugin<'a, T>> {
-        self.plugins.iter().find(|plugin| plugin.info.id == *id)
+    //TODO: Добавить параллельную версию метода
+    pub fn get_plugin(&self, id: &str, version: &Version) -> Option<&Plugin<'a, T>> {
+        self.plugins.iter().find(|plugin| **plugin == (id, version))
     }
 
-    pub fn get_plugin_mut(&mut self, id: &String) -> Option<&mut Plugin<'a, T>> {
-        self.plugins.iter_mut().find(|plugin| plugin.info.id == *id)
+    //TODO: Добавить параллельную версию метода
+    pub fn get_plugin_by_bundle(&self, bundle: &Bundle) -> Option<&Plugin<'a, T>> {
+        self.plugins.iter().find(|plugin| *plugin == bundle)
+    }
+
+    //TODO: Добавить параллельную версию метода
+    pub fn get_plugin_mut(&mut self, id: &str, version: &Version) -> Option<&mut Plugin<'a, T>> {
+        self.plugins
+            .iter_mut()
+            .find(|plugin| **plugin == (id, version))
+    }
+
+    //TODO: Добавить параллельную версию метода
+    pub fn get_plugin_mut_by_bundle(&mut self, bundle: &Bundle) -> Option<&mut Plugin<'a, T>> {
+        self.plugins.iter_mut().find(|plugin| *plugin == bundle)
+    }
+
+    //TODO: Добавить параллельную версию метода
+    pub fn get_plugins_by_id(&self, id: &str) -> Vec<&Plugin<'a, T>> {
+        self.plugins
+            .iter()
+            .filter(|plugin| plugin.info.bundle.id == id)
+            .collect()
+    }
+
+    //TODO: Добавить параллельную версию метода
+    pub fn get_plugins_by_id_mut(&mut self, id: &str) -> Vec<&mut Plugin<'a, T>> {
+        self.plugins
+            .iter_mut()
+            .filter(|plugin| plugin.info.bundle.id == id)
+            .collect()
     }
 
     pub const fn get_plugins(&self) -> &Vec<Plugin<'a, T>> {
@@ -247,27 +295,31 @@ impl<'a, T: Send + Sync> Loader<'a, T> {
 }
 
 mod private_loader {
+
+    use std::path::Path;
+
     use crate::{
         utils::{
-            LoadPluginError, Ptr, RegisterManagerError, StopLoaderError, UnloadPluginError,
-            UnregisterManagerError, UnregisterPluginError,
+            bundle::Bundle, LoadPluginError, Ptr, RegisterManagerError, RegisterPluginError,
+            StopLoaderError, UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
         },
-        LoadPluginContext, Manager, Plugin, Registry, Requests,
+        LoadPluginContext, Manager, Plugin, PluginInfo, RegisterPluginContext, Registry, Requests,
     };
 
     pub fn stop_plugins<T: Send + Sync>(
         loader: &mut super::Loader<'_, T>,
     ) -> Result<(), StopLoaderError> {
         // Сортируем плагины в порядке их зависимостей
-        let sort_plugins = stop_sort_plugins(loader);
+        let sort_plugins = sort_plugins(&loader.plugins.iter().collect());
 
         let mut errors = vec![];
 
         // Выгружаем плагины
-        for plugin in sort_plugins.iter() {
-            if let Err(e) = unregister_plugin(loader, *plugin) {
+        for plugin in sort_plugins.into_iter() {
+            //TODO: Внедрить принудительную версию метода
+            if let Err(e) = unregister_plugin(loader, plugin) {
                 //TODO: Добавить debug вывод
-                errors.push((unsafe { &**plugin }.info.id.clone(), e));
+                errors.push((unsafe { &*plugin }.info.bundle.id.clone(), e));
             }
         }
 
@@ -277,12 +329,13 @@ mod private_loader {
         }
     }
 
-    pub fn stop_managers<T: Send + Sync>(
-        loader: &mut super::Loader<'_, T>,
+    pub fn stop_managers<'a, T: Send + Sync>(
+        loader: &'a mut super::Loader<'_, T>,
     ) -> Result<(), StopLoaderError> {
         // Открепляем менеджеры плагинов от загрузчика
         let mut errors = vec![];
         while !loader.managers.is_empty() {
+            //TODO: Внедрить принудительную версию метода
             if let Err(e) = unregister_manager(loader, 0_usize) {
                 errors.push(e);
             }
@@ -295,89 +348,84 @@ mod private_loader {
     }
 
     // Продвинутая древовидная сортировка
-    pub fn stop_sort_plugins<'a, T: Send + Sync>(
-        loader: *mut super::Loader<'a, T>,
+    pub fn sort_plugins<'a, T: Send + Sync>(
+        plugins: &Vec<&Plugin<'a, T>>,
     ) -> Vec<*mut Plugin<'a, T>> {
         let mut result = vec![];
 
-        let plugins_depends = unsafe { &*loader }
-            .plugins
-            .iter()
-            .map(|p| {
-                p.info
-                    .depends
-                    .iter()
-                    .chain(p.info.optional_depends.iter())
-                    .map(|d| d.clone())
-                    .collect::<Vec<String>>()
-            })
-            .collect::<Vec<Vec<String>>>();
-
-        'outer: for plugin in unsafe { &mut *loader }.plugins.iter_mut() {
+        'outer: for plugin in plugins.iter() {
             {
-                let plugin_id = &plugin.info.id;
-                for depends in plugins_depends.iter() {
-                    if depends.contains(plugin_id) {
-                        continue 'outer;
-                    }
+                let find_plugin = plugins
+                    .iter()
+                    .find(|pl| {
+                        pl.info
+                            .info
+                            .depends
+                            .iter()
+                            .chain(pl.info.info.optional_depends.iter())
+                            .any(|d| *d == **plugin)
+                    })
+                    .is_some();
+
+                if find_plugin {
+                    continue 'outer;
                 }
             }
 
-            result = stop_sort_pick(unsafe { &mut *loader }, plugin, result);
+            sort_pick(
+                plugins,
+                *plugin as *const Plugin<'a, T> as *mut Plugin<'a, T>,
+                &mut result,
+            );
         }
 
         result
     }
 
-    pub fn stop_sort_pick<'a, T: Send + Sync>(
-        loader: &mut super::Loader<'a, T>,
+    pub fn sort_pick<'a, T: Send + Sync>(
+        plugins: &Vec<&Plugin<'a, T>>,
         plugin: *mut Plugin<'a, T>,
-        mut result: Vec<*mut Plugin<'a, T>>,
-    ) -> Vec<*mut Plugin<'a, T>> {
+        result: &mut Vec<*mut Plugin<'a, T>>,
+    ) {
         result.push(plugin);
 
         let plugin_info = &unsafe { &*plugin }.info;
-        'outer: for depend in plugin_info
+        let depends = plugin_info
+            .info
             .depends
             .iter()
-            .chain(plugin_info.optional_depends.iter())
-        {
-            if !result.iter().any(|pl| unsafe { &**pl }.info.id == *depend) {
+            .chain(plugin_info.info.optional_depends.iter());
+        'outer: for depend in depends {
+            if !result.iter().any(|pl| *unsafe { &**pl } == *depend) {
                 let mut p = None;
 
-                for plug in loader.plugins.iter_mut() {
+                for plug in plugins.iter() {
                     let plug_info = &plug.info;
-                    if plug_info.id == *depend {
-                        p = Some(plug as *mut Plugin<'a, T>);
+                    if plug_info.bundle == *depend {
+                        p = Some(*plug as *const Plugin<'a, T> as *mut Plugin<'a, T>);
                         continue;
                     }
 
                     if !result
                         .iter()
-                        .any(|pl| unsafe { &**pl }.info.id == plug_info.id)
-                        && (plug_info.depends.contains(depend)
-                            || plug_info.optional_depends.contains(depend))
+                        .any(|pl| unsafe { &**pl }.info.bundle == plug_info.bundle)
+                        && (plug_info.info.depends.contains(depend)
+                            || plug_info.info.optional_depends.contains(depend))
                     {
                         continue 'outer;
                     }
                 }
 
-                result = stop_sort_pick(loader, p.unwrap(), result);
+                sort_pick(plugins, p.unwrap(), result);
             }
         }
-
-        result
     }
 
     pub fn register_manager<'a, T: Send + Sync>(
         loader: &mut super::Loader<'a, T>,
         mut manager: Box<dyn Manager<'a, T>>,
     ) -> Result<(), RegisterManagerError> {
-        if let Some(_) = loader
-            .managers
-            .iter()
-            .find(|m| manager.format() == m.format())
-        {
+        if let Some(_) = loader.managers.iter().find(|m| manager == **m) {
             return Err(RegisterManagerError::AlreadyOccupiedFormat(
                 manager.format().to_string(),
             ));
@@ -389,42 +437,102 @@ mod private_loader {
         Ok(())
     }
 
+    //TODO: Добавить принудительную версию метода
     pub fn unregister_manager<T: Send + Sync>(
         loader: &mut super::Loader<'_, T>,
         index: usize,
     ) -> Result<(), UnregisterManagerError> {
-        let mut manager = loader.managers.remove(index);
-        loader
-            .plugins
-            .retain(|p| p.manager.as_ref().format() != manager.format());
+        let manager = &loader.managers[index];
 
+        // Выгружаем все плагины, относящиеся к менеджеру
+        let plugins_from_manager = loader
+            .plugins
+            .iter()
+            .filter(|plugin| *plugin.manager.as_ref() == *manager)
+            .collect();
+
+        // Сортируем плагины менеджера в порядке их зависимостей
+        let sort_plugins = sort_plugins(&plugins_from_manager);
+
+        // Выгружаем плагины
+        for plugin in sort_plugins.into_iter() {
+            unregister_plugin(loader, plugin)?;
+        }
+
+        // Выгружаем менеджер
+        let mut manager = loader.managers.remove(index);
         match manager.unregister_manager() {
             Ok(_) => Ok(()),
             Err(e) => Err(UnregisterManagerError::UnregisterManagerByManager(e)),
         }
     }
 
+    //TODO: Добавить принудительную версию метода
+    pub fn register_plugin<'a, T: Send + Sync>(
+        loader: &mut super::Loader<'a, T>,
+        path: &str,
+    ) -> Result<Bundle, RegisterPluginError> {
+        let path = Path::new(path).to_path_buf();
+
+        if !path.is_dir() {
+            return Err(RegisterPluginError::NotFound);
+        }
+
+        if let Some(_) = path.extension() {
+            let bundle = Bundle::from_filename(path.file_name().unwrap())?;
+
+            // Проверяем, есть ли уже такой плагин
+            if loader.get_plugin_by_bundle(&bundle).is_some() {
+                return Err(RegisterPluginError::AlreadyExistsIDAndVersion(
+                    bundle.id.clone(),
+                    bundle.version.clone(),
+                ));
+            }
+
+            // Ищем подходящий менеджер
+            let plugin_format = bundle.format.clone();
+            let manager = loader
+                .get_manager_mut(plugin_format.as_str())
+                .ok_or(RegisterPluginError::UnknownManagerFormat(plugin_format))?;
+
+            // Менеджер регистрирует плагин
+            let info = manager.register_plugin(RegisterPluginContext {
+                path: &path,
+                bundle: &bundle,
+            })?;
+            let plugin_info = PluginInfo { path, bundle, info };
+
+            // Регистрируем плагин
+            let plugin = Plugin::<'a>::new(Ptr::<'a>::new(manager), plugin_info);
+            let bundle = plugin.info.bundle.clone();
+            loader.plugins.push(plugin);
+
+            return Ok(bundle);
+        } else {
+            return Err(RegisterPluginError::UnknownManagerFormat("".to_string()));
+        }
+    }
+
+    //TODO: Добавить принудительную версию метода
     pub fn unregister_plugin<'a, T: Send + Sync>(
         loader: &mut super::Loader<'a, T>,
         plugin: *mut Plugin<'a, T>,
     ) -> Result<(), UnregisterPluginError> {
         unload_plugin(loader, plugin.clone())?;
 
-        unsafe { &mut *plugin }
+        unsafe { &*plugin }
             .manager
             .as_mut()
-            .unregister_plugin(Ptr::<'a>::new(unsafe { &mut *plugin }))?;
+            .unregister_plugin(Ptr::new(plugin))?;
 
-        loader
-            .plugins
-            .retain(|p| p.info.id != unsafe { &*plugin }.info.id);
+        loader.plugins.retain(|p| *p != *unsafe { &*plugin });
 
         Ok(())
     }
 
-    pub fn load_plugin<'a, T: Send + Sync>(
-        loader: &mut super::Loader<'a, T>,
-        plugin: *mut Plugin<'a, T>,
+    pub fn load_plugin<T: Send + Sync>(
+        loader: &mut super::Loader<'_, T>,
+        plugin: *mut Plugin<'_, T>,
     ) -> Result<(), LoadPluginError> {
         if unsafe { &*plugin }.is_load {
             return Ok(());
@@ -433,22 +541,23 @@ mod private_loader {
         // Загружаем зависимости
         let info = &unsafe { &*plugin }.info;
         let depends_iter = info
+            .info
             .depends
             .iter()
             .map(|d| (true, d))
-            .chain(info.optional_depends.iter().map(|d| (false, d)));
+            .chain(info.info.optional_depends.iter().map(|d| (false, d)));
 
         let mut not_found_depends = vec![];
-        for (is_depend, id_depend) in depends_iter {
-            if let Some(_) = loader.plugins.iter().find(|p| p.info.id == *id_depend) {
-                if let Err(e) = loader.load_plugin(id_depend) {
+        for (is_depend, depend) in depends_iter {
+            if let Some(_) = loader.plugins.iter().find(|p| p.info.bundle == *depend) {
+                if let Err(e) = loader.load_plugin(&depend.id, &depend.version) {
                     return Err(LoadPluginError::LoadDependency {
-                        depend: id_depend.clone(),
+                        depend: depend.clone(),
                         error: Box::new(e),
                     });
                 }
             } else if is_depend {
-                not_found_depends.push(id_depend.clone());
+                not_found_depends.push(depend.clone());
             }
         }
 
@@ -457,7 +566,7 @@ mod private_loader {
         }
 
         // Загружаем плагин
-        unsafe { &mut *plugin }
+        unsafe { &*plugin }
             .manager
             .as_mut()
             .load_plugin(LoadPluginContext::new(
@@ -474,7 +583,7 @@ mod private_loader {
                 match !loader
                     .requests
                     .iter()
-                    .any(|req| *req.name() == request.name())
+                    .any(|req| *req.name == request.name())
                 {
                     true => Some(request.name().to_string()),
                     false => None,
@@ -491,30 +600,38 @@ mod private_loader {
         Ok(())
     }
 
-    pub fn unload_plugin<'a, T: Send + Sync>(
-        loader: &mut super::Loader<'a, T>,
-        plugin: *mut Plugin<'a, T>,
+    //TODO: Добавить принудительную версию метода
+    pub fn unload_plugin<T: Send + Sync>(
+        loader: &super::Loader<'_, T>,
+        plugin: *mut Plugin<'_, T>,
     ) -> Result<(), UnloadPluginError> {
         if unsafe { &*plugin }.is_load {
+            let bundle = &unsafe { &*plugin }.info.bundle;
+
+            // Проверяем, что плагин не используется как зависимость загруженными плагинами
             loader.plugins.iter().try_for_each(|plug| {
                 let plug_info = &plug.info;
 
-                let mut depends_iter = plug_info
+                let find_depend = plug_info
+                    .info
                     .depends
                     .iter()
-                    .chain(plug_info.optional_depends.iter());
-                match depends_iter.find(|depend| **depend == plug_info.id) {
-                    Some(_) => Err(UnloadPluginError::DependentOnAnotherPlugin(
-                        plug_info.id.clone(),
-                    )),
-                    None => Ok(()),
+                    .chain(plug_info.info.optional_depends.iter())
+                    .find(|depend| **depend == *bundle)
+                    .is_some();
+                match plug.is_load && find_depend {
+                    true => Err(UnloadPluginError::CurrentlyUsesDepend {
+                        plugin: plug_info.bundle.clone(),
+                        depend: bundle.clone(),
+                    }),
+                    false => Ok(()),
                 }
             })?;
 
-            unsafe { &mut *plugin }
+            unsafe { &*plugin }
                 .manager
                 .as_mut()
-                .unload_plugin(Ptr::<'a>::new(unsafe { &mut *plugin }))?;
+                .unload_plugin(Ptr::new(plugin))?;
         }
 
         unsafe { &mut *plugin }.is_load = false;
