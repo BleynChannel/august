@@ -4,7 +4,7 @@ use crate::{config::NativeConfig, Plugin};
 use august_plugin_system::{
     context::LoadPluginContext,
     utils::{bundle::Bundle, ManagerResult, Ptr},
-    Depend, Info, Loader, Manager, Plugin as StdPlugin, RegisterPluginContext,
+    Depend, Loader, Manager, Plugin as StdPlugin, RegisterPluginContext, StdInfo,
 };
 use libloading::Library;
 
@@ -22,21 +22,21 @@ impl NativePluginManager {
     }
 }
 
-impl<'a, T: Send + Sync> Manager<'a, T> for NativePluginManager {
+impl<'a, O: Send + Sync> Manager<'a, O, StdInfo> for NativePluginManager {
     fn format(&self) -> &str {
         "npl"
     }
 
-    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, T>>) -> ManagerResult<()> {
+    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, O, StdInfo>>) -> ManagerResult<()> {
         Ok(())
     }
     fn unregister_manager(&mut self) -> ManagerResult<()> {
         Ok(())
     }
 
-    fn register_plugin(&mut self, context: RegisterPluginContext) -> ManagerResult<Info> {
+    fn register_plugin(&mut self, context: RegisterPluginContext) -> ManagerResult<StdInfo> {
         let config = NativeConfig::load(context.path)?;
-        let info = Info {
+        let info = StdInfo {
             depends: config.depends.clone().map_or(vec![], |depends| {
                 depends
                     .into_iter()
@@ -55,12 +55,12 @@ impl<'a, T: Send + Sync> Manager<'a, T> for NativePluginManager {
             .push(Plugin::new(context.bundle.clone(), info.clone(), config));
         Ok(info)
     }
-    fn unregister_plugin(&mut self, plugin: &StdPlugin<'a, T>) -> ManagerResult<()> {
+    fn unregister_plugin(&mut self, plugin: &StdPlugin<'a, O, StdInfo>) -> ManagerResult<()> {
         self.remove_plugin(&plugin.info().bundle);
         Ok(())
     }
 
-    fn load_plugin(&mut self, context: LoadPluginContext<'a, '_, T>) -> ManagerResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext<'a, '_, O, StdInfo>) -> ManagerResult<()> {
         let plugin = context.plugin();
 
         // Загрузка библиотеки
@@ -91,7 +91,7 @@ impl<'a, T: Send + Sync> Manager<'a, T> for NativePluginManager {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: &StdPlugin<'a, T>) -> ManagerResult<()> {
+    fn unload_plugin(&mut self, plugin: &StdPlugin<'a, O, StdInfo>) -> ManagerResult<()> {
         let bundle = &plugin.info().bundle;
         self.plugins
             .iter_mut()

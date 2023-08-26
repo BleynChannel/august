@@ -13,7 +13,7 @@ use zip::{write::FileOptions, ZipArchive, ZipWriter};
 
 use crate::{
     utils::{BundleFromError, BundleUnzipError},
-    Depend, Plugin,
+    Depend, Info, Plugin,
 };
 
 use super::BundleZipError;
@@ -39,7 +39,7 @@ impl Bundle {
         let format = path
             .drain(path.rfind('.').ok_or(BundleFromError::FormatFailed)? + 1..)
             .collect::<String>();
-		let version = path
+        let version = path
             .drain(path.rfind("-v").ok_or(BundleFromError::VersionFailed)? + 2..path.len() - 1)
             .collect::<String>();
         let id = path
@@ -49,7 +49,7 @@ impl Bundle {
         if format.is_empty() {
             return Err(BundleFromError::FormatFailed);
         }
-		if version.is_empty() {
+        if version.is_empty() {
             return Err(BundleFromError::VersionFailed);
         }
         if id.is_empty() {
@@ -70,8 +70,8 @@ impl<ID: AsRef<str>> PartialEq<(ID, &Version)> for Bundle {
     }
 }
 
-impl<T: Send + Sync> PartialEq<Plugin<'_, T>> for Bundle {
-    fn eq(&self, other: &Plugin<'_, T>) -> bool {
+impl<O: Send + Sync, I: Info> PartialEq<Plugin<'_, O, I>> for Bundle {
+    fn eq(&self, other: &Plugin<'_, O, I>) -> bool {
         self.id == other.info.bundle.id && self.version == other.info.bundle.version
     }
 }
@@ -91,8 +91,8 @@ impl<ID: AsRef<str>> PartialOrd<(ID, &Version)> for Bundle {
     }
 }
 
-impl<T: Send + Sync> PartialOrd<Plugin<'_, T>> for Bundle {
-    fn partial_cmp(&self, other: &Plugin<'_, T>) -> Option<Ordering> {
+impl<O: Send + Sync, I: Info> PartialOrd<Plugin<'_, O, I>> for Bundle {
+    fn partial_cmp(&self, other: &Plugin<'_, O, I>) -> Option<Ordering> {
         match self.id == other.info.bundle.id {
             true => self.version.partial_cmp(&other.info.bundle.version),
             false => None,

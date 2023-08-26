@@ -6,7 +6,7 @@ pub use config::*;
 
 use std::path::PathBuf;
 
-use august_plugin_system::{function::FunctionOutput, Loader, Manager};
+use august_plugin_system::{function::FunctionOutput, Loader, Manager, StdInfo};
 
 pub fn get_plugin_path(id: &str, version: &str, format: &str) -> PathBuf {
     std::env::current_dir()
@@ -15,9 +15,9 @@ pub fn get_plugin_path(id: &str, version: &str, format: &str) -> PathBuf {
 }
 
 #[allow(dead_code)]
-pub fn loader_init<'a, M>(manager: M) -> Loader<'a, FunctionOutput>
+pub fn loader_init<'a, M>(manager: M) -> Loader<'a, FunctionOutput, StdInfo>
 where
-    M: Manager<'a, FunctionOutput> + 'static,
+    M: Manager<'a, FunctionOutput, StdInfo> + 'static,
 {
     let mut loader = Loader::new();
     loader

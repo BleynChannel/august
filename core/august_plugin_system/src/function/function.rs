@@ -13,9 +13,9 @@ pub trait Function: Send + Sync {
     fn call(&self, args: &[Variable]) -> Self::Output;
 }
 
-impl<T: Send + Sync> Display for dyn Function<Output = T> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		//TODO: Внедрить описание функций в August
+impl<O: Send + Sync> Display for dyn Function<Output = O> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        //TODO: Внедрить описание функций в August
         // // Комментарий в виде описания функции
         // write!(f, "# {}\n", self.description);
 
@@ -34,12 +34,12 @@ impl<T: Send + Sync> Display for dyn Function<Output = T> {
                 None => "void".to_string(),
             }
         )
-	}
+    }
 }
 
-impl<T: Send + Sync> Debug for dyn Function<Output = T> {
+impl<O: Send + Sync> Debug for dyn Function<Output = O> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		Display::fmt(self, f)
+        Display::fmt(self, f)
     }
 }
 

@@ -4,10 +4,10 @@ use crate::{
     Info, Loader, Plugin, RegisterPluginContext,
 };
 
-pub trait Manager<'a, T: Send + Sync>: Send + Sync {
+pub trait Manager<'a, O: Send + Sync, I: Info>: Send + Sync {
     fn format(&self) -> &str;
 
-    fn register_manager(&mut self, _loader: Ptr<'a, Loader<'a, T>>) -> ManagerResult<()> {
+    fn register_manager(&mut self, _loader: Ptr<'a, Loader<'a, O, I>>) -> ManagerResult<()> {
         Ok(())
     }
 
@@ -15,45 +15,47 @@ pub trait Manager<'a, T: Send + Sync>: Send + Sync {
         Ok(())
     }
 
-    fn register_plugin(&mut self, _context: RegisterPluginContext) -> ManagerResult<Info> {
-        Ok(Info::new())
-    }
+    fn register_plugin(&mut self, _context: RegisterPluginContext) -> ManagerResult<I>;
 
-    fn unregister_plugin(&mut self, _plugin: &Plugin<'a, T>) -> ManagerResult<()> {
+    fn unregister_plugin(&mut self, _plugin: &Plugin<'a, O, I>) -> ManagerResult<()> {
         Ok(())
     }
 
-    fn load_plugin(&mut self, _context: LoadPluginContext<'a, '_, T>) -> ManagerResult<()> {
+    fn load_plugin(&mut self, _context: LoadPluginContext<'a, '_, O, I>) -> ManagerResult<()> {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, _plugin: &Plugin<'a, T>) -> ManagerResult<()> {
+    fn unload_plugin(&mut self, _plugin: &Plugin<'a, O, I>) -> ManagerResult<()> {
         Ok(())
     }
 }
 
-impl<'a, T: Send + Sync> PartialEq for dyn Manager<'a, T> {
+impl<'a, O: Send + Sync, I: Info> PartialEq for dyn Manager<'a, O, I> {
     fn eq(&self, other: &Self) -> bool {
         self.format() == other.format()
     }
 }
 
-impl<'a, T, TT> PartialEq<Box<dyn Manager<'a, T>>> for dyn Manager<'a, TT>
+impl<'a, O, OO, I, II> PartialEq<Box<dyn Manager<'a, O, I>>> for dyn Manager<'a, OO, II>
 where
-    T: Send + Sync,
-    TT: Send + Sync,
+    O: Send + Sync,
+    OO: Send + Sync,
+    I: Info,
+    II: Info,
 {
-    fn eq(&self, other: &Box<dyn Manager<'a, T>>) -> bool {
+    fn eq(&self, other: &Box<dyn Manager<'a, O, I>>) -> bool {
         self.format() == other.format()
     }
 }
 
-impl<'a, T, TT> PartialEq<dyn Manager<'a, TT>> for Box<dyn Manager<'a, T>>
+impl<'a, O, OO, I, II> PartialEq<dyn Manager<'a, OO, II>> for Box<dyn Manager<'a, O, I>>
 where
-    T: Send + Sync,
-    TT: Send + Sync,
+    O: Send + Sync,
+    OO: Send + Sync,
+    I: Info,
+    II: Info,
 {
-    fn eq(&self, other: &dyn Manager<'a, TT>) -> bool {
+    fn eq(&self, other: &dyn Manager<'a, OO, II>) -> bool {
         self.format() == other.format()
     }
 }

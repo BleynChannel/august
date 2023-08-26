@@ -10,7 +10,7 @@ use august_plugin_system::{
     function::{Arg, DynamicFunction, FunctionOutput},
     utils::{bundle::Bundle, ManagerResult},
     variable::Variable,
-    Manager, Plugin, Registry, Requests,
+    Manager, Plugin, Registry, Requests, StdInfo,
 };
 use rlua::{Context, Lua, MultiValue, ToLua, Value};
 
@@ -18,14 +18,14 @@ pub struct LuaPluginManager {
     lua_refs: HashMap<Bundle, Arc<Mutex<Lua>>>,
 }
 
-impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
+impl<'a> Manager<'a, FunctionOutput, StdInfo> for LuaPluginManager {
     fn format(&self) -> &str {
         "fpl"
     }
 
     fn load_plugin(
         &mut self,
-        mut context: LoadPluginContext<'a, '_, FunctionOutput>,
+        mut context: LoadPluginContext<'a, '_, FunctionOutput, StdInfo>,
     ) -> ManagerResult<()> {
         let bundle = &context.plugin().info().bundle;
 
@@ -52,7 +52,7 @@ impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: &Plugin<'a, FunctionOutput>) -> ManagerResult<()> {
+    fn unload_plugin(&mut self, plugin: &Plugin<'a, FunctionOutput, StdInfo>) -> ManagerResult<()> {
         let bundle = &plugin.info().bundle;
 
         println!("FunctionPluginManager::unload_plugin - {}", bundle);
@@ -60,13 +60,23 @@ impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
         Ok(drop(self.lua_refs.remove(bundle)))
     }
 
-	fn unregister_plugin(&mut self, plugin: &Plugin<'a, FunctionOutput>) -> ManagerResult<()> {
-		let bundle = &plugin.info().bundle;
+    fn unregister_plugin(
+        &mut self,
+        plugin: &Plugin<'a, FunctionOutput, StdInfo>,
+    ) -> ManagerResult<()> {
+        let bundle = &plugin.info().bundle;
 
         println!("FunctionPluginManager::unregister_plugin - {}", bundle);
-		
-		Ok(())
-	}
+
+        Ok(())
+    }
+
+    fn register_plugin(
+        &mut self,
+        _context: august_plugin_system::RegisterPluginContext,
+    ) -> ManagerResult<StdInfo> {
+        Ok(Default::default())
+    }
 }
 
 impl LuaPluginManager {

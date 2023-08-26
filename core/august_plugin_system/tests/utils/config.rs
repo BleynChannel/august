@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs, path::PathBuf};
 
-use august_plugin_system::{utils::ManagerResult, Depend, Info};
+use august_plugin_system::{utils::ManagerResult, Depend, StdInfo};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +20,7 @@ pub enum RegisterPluginError {
     DoesNotContainConfig,
 }
 
-pub fn load_config(plugin_path: &PathBuf) -> ManagerResult<(Config, Info)> {
+pub fn load_config(plugin_path: &PathBuf) -> ManagerResult<(Config, StdInfo)> {
     // Получаем конфигурацию плагина
     let config_path = plugin_path.join("config.toml");
     if !config_path.exists() {
@@ -31,7 +31,7 @@ pub fn load_config(plugin_path: &PathBuf) -> ManagerResult<(Config, Info)> {
     let config: Config = toml::from_str(&config_content)?;
 
     //Заполняем информацию про плагин
-    let info = Info {
+    let info = StdInfo {
         depends: config.depends.clone().map_or(vec![], |depends| {
             depends
                 .into_iter()

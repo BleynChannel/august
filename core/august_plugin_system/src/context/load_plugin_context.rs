@@ -1,16 +1,16 @@
-use crate::{function::Function, utils::RegisterRequestError, Plugin, Registry, Requests};
+use crate::{function::Function, utils::RegisterRequestError, Info, Plugin, Registry, Requests};
 
-pub struct LoadPluginContext<'a, 'b, T: Send + Sync> {
-    pub(crate) plugin: &'b mut Plugin<'a, T>,
+pub struct LoadPluginContext<'a, 'b, O: Send + Sync, I: Info> {
+    pub(crate) plugin: &'b mut Plugin<'a, O, I>,
     pub(crate) requests: &'b Requests,
-    pub(crate) registry: &'b Registry<T>,
+    pub(crate) registry: &'b Registry<O>,
 }
 
-impl<'a, 'b, T: Send + Sync> LoadPluginContext<'a, 'b, T> {
+impl<'a, 'b, O: Send + Sync, I: Info> LoadPluginContext<'a, 'b, O, I> {
     pub(crate) fn new(
-        plugin: &'b mut Plugin<'a, T>,
+        plugin: &'b mut Plugin<'a, O, I>,
         requests: &'b Requests,
-        registry: &'b Registry<T>,
+        registry: &'b Registry<O>,
     ) -> Self {
         Self {
             plugin,
@@ -19,7 +19,7 @@ impl<'a, 'b, T: Send + Sync> LoadPluginContext<'a, 'b, T> {
         }
     }
 
-    pub const fn plugin(&self) -> &Plugin<'a, T> {
+    pub const fn plugin(&self) -> &Plugin<'a, O, I> {
         self.plugin
     }
 
@@ -27,13 +27,13 @@ impl<'a, 'b, T: Send + Sync> LoadPluginContext<'a, 'b, T> {
         self.requests
     }
 
-    pub const fn registry(&self) -> &Registry<T> {
+    pub const fn registry(&self) -> &Registry<O> {
         self.registry
     }
 
     pub fn register_request<F>(&mut self, request: F) -> Result<(), RegisterRequestError>
     where
-        F: Function<Output = T> + 'static,
+        F: Function<Output = O> + 'static,
     {
         {
             if let Some(req) = self.requests.iter().find(|req| *req.name == request.name()) {
