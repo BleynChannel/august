@@ -8,7 +8,7 @@ use std::{
 use august_plugin_system::{
     context::LoadPluginContext,
     function::{Arg, DynamicFunction, FunctionOutput},
-    utils::{bundle::Bundle, ManagerResult, Ptr},
+    utils::{bundle::Bundle, ManagerResult},
     variable::Variable,
     Manager, Plugin, Registry, Requests,
 };
@@ -25,11 +25,11 @@ impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
 
     fn load_plugin(
         &mut self,
-        mut context: LoadPluginContext<'a, FunctionOutput>,
+        mut context: LoadPluginContext<'a, '_, FunctionOutput>,
     ) -> ManagerResult<()> {
         let bundle = &context.plugin().info().bundle;
 
-        println!("FunctionPluginManager::load_plugin - {:?}", bundle.clone());
+        println!("FunctionPluginManager::load_plugin - {}", bundle);
 
         self.lua_refs
             .insert(bundle.clone(), Arc::new(Mutex::new(Lua::new())));
@@ -52,13 +52,21 @@ impl<'a> Manager<'a, FunctionOutput> for LuaPluginManager {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, FunctionOutput>>) -> ManagerResult<()> {
-        let bundle = &plugin.as_ref().info().bundle;
+    fn unload_plugin(&mut self, plugin: &Plugin<'a, FunctionOutput>) -> ManagerResult<()> {
+        let bundle = &plugin.info().bundle;
 
-        println!("FunctionPluginManager::unload_plugin - {:?}", bundle.id);
+        println!("FunctionPluginManager::unload_plugin - {}", bundle);
 
         Ok(drop(self.lua_refs.remove(bundle)))
     }
+
+	fn unregister_plugin(&mut self, plugin: &Plugin<'a, FunctionOutput>) -> ManagerResult<()> {
+		let bundle = &plugin.info().bundle;
+
+        println!("FunctionPluginManager::unregister_plugin - {}", bundle);
+		
+		Ok(())
+	}
 }
 
 impl LuaPluginManager {

@@ -58,7 +58,7 @@ pub enum BundleUnzipError {
 #[derive(Error, Debug)]
 pub enum StopLoaderError {
     #[error("Failed to unregister plugins `{0:?}`")]
-    UnregisterPluginFailed(Vec<(String, UnregisterPluginError)>),
+    UnregisterPluginFailed(Vec<UnregisterPluginError>),
     #[error("Failed to unregister managers `{0:?}`")]
     UnregisterManagerFailed(Vec<UnregisterManagerError>),
 }

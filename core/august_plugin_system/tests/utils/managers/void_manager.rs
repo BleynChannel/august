@@ -29,30 +29,30 @@ impl<'a, T: Send + Sync> Manager<'a, T> for VoidPluginManager {
         let (config, info) = load_config(context.path)?;
         self.configs.push(config);
 
-        println!("VoidPluginManager::register_plugin - {}", context.bundle.id);
+        println!("VoidPluginManager::register_plugin - {}", context.bundle);
         Ok(info)
     }
 
-    fn unregister_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, T>>) -> ManagerResult<()> {
+    fn unregister_plugin(&mut self, plugin: &Plugin<'a, T>) -> ManagerResult<()> {
         println!(
-            "VoidPluginManager::unregister_plugin - {:?}",
-            plugin.as_ref().info().path
+            "VoidPluginManager::unregister_plugin - {}",
+            plugin.info().bundle
         );
         Ok(())
     }
 
-    fn load_plugin(&mut self, context: LoadPluginContext<'a, T>) -> ManagerResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext<'a, '_, T>) -> ManagerResult<()> {
         println!(
-            "VoidPluginManager::load_plugin - {:?}",
-            context.plugin().info().bundle.id
+            "VoidPluginManager::load_plugin - {}",
+            context.plugin().info().bundle
         );
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: Ptr<'a, Plugin<'a, T>>) -> ManagerResult<()> {
+    fn unload_plugin(&mut self, plugin: &Plugin<'a, T>) -> ManagerResult<()> {
         println!(
-            "VoidPluginManager::unload_plugin - {:?}",
-            plugin.as_ref().info().bundle.id
+            "VoidPluginManager::unload_plugin - {}",
+            plugin.info().bundle
         );
         Ok(())
     }

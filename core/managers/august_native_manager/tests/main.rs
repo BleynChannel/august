@@ -6,11 +6,7 @@ mod main {
 
     #[test]
     fn load_manager() {
-        let mut loader = loader_init();
-
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
+        loader_init();
     }
 
     #[test]
@@ -20,9 +16,5 @@ mod main {
         loader
             .load_plugin_now(get_plugin_path("native_plugin", "1.0.0").to_str().unwrap())
             .unwrap();
-
-        if let Err(e) = loader.stop() {
-            panic!("{:?}: {}", e, e.to_string());
-        }
     }
 }

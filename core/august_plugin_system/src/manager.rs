@@ -18,15 +18,16 @@ pub trait Manager<'a, T: Send + Sync>: Send + Sync {
     fn register_plugin(&mut self, _context: RegisterPluginContext) -> ManagerResult<Info> {
         Ok(Info::new())
     }
-    fn unregister_plugin(&mut self, _plugin: Ptr<'a, Plugin<'a, T>>) -> ManagerResult<()> {
+
+    fn unregister_plugin(&mut self, _plugin: &Plugin<'a, T>) -> ManagerResult<()> {
         Ok(())
     }
 
-    fn load_plugin(&mut self, _context: LoadPluginContext<'a, T>) -> ManagerResult<()> {
+    fn load_plugin(&mut self, _context: LoadPluginContext<'a, '_, T>) -> ManagerResult<()> {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, _plugin: Ptr<'a, Plugin<'a, T>>) -> ManagerResult<()> {
+    fn unload_plugin(&mut self, _plugin: &Plugin<'a, T>) -> ManagerResult<()> {
         Ok(())
     }
 }

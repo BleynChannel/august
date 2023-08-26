@@ -8,3 +8,4 @@ dep_1 = "1.0.0"
 
 [optional_depends]
 dep_3 = "1.0.0"
+dep_5 = "1.0.0"

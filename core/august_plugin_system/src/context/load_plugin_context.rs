@@ -1,38 +1,34 @@
-use crate::{
-    function::Function,
-    utils::{Ptr, RegisterRequestError},
-    Plugin, Registry, Requests,
-};
+use crate::{function::Function, utils::RegisterRequestError, Plugin, Registry, Requests};
 
-pub struct LoadPluginContext<'a, T: Send + Sync> {
-    pub(crate) plugin: Ptr<'a, Plugin<'a, T>>,
-    pub(crate) registry: Ptr<'a, Registry<T>>,
-    pub(crate) requests: Ptr<'a, Requests>,
+pub struct LoadPluginContext<'a, 'b, T: Send + Sync> {
+    pub(crate) plugin: &'b mut Plugin<'a, T>,
+    pub(crate) requests: &'b Requests,
+    pub(crate) registry: &'b Registry<T>,
 }
 
-impl<'a, T: Send + Sync> LoadPluginContext<'a, T> {
-    pub(crate) const fn new(
-        plugin: Ptr<'a, Plugin<'a, T>>,
-        registry: Ptr<'a, Registry<T>>,
-        requests: Ptr<'a, Requests>,
+impl<'a, 'b, T: Send + Sync> LoadPluginContext<'a, 'b, T> {
+    pub(crate) fn new(
+        plugin: &'b mut Plugin<'a, T>,
+        requests: &'b Requests,
+        registry: &'b Registry<T>,
     ) -> Self {
         Self {
             plugin,
-            registry,
             requests,
+            registry,
         }
     }
 
-    pub fn plugin(&self) -> &Plugin<'a, T> {
-        self.plugin.as_ref()
+    pub const fn plugin(&self) -> &Plugin<'a, T> {
+        self.plugin
     }
 
-    pub fn registry(&self) -> &Registry<T> {
-        self.registry.as_ref()
+    pub const fn requests(&self) -> &Requests {
+        self.requests
     }
 
-    pub fn requests(&self) -> &Requests {
-        self.requests.as_ref()
+    pub const fn registry(&self) -> &Registry<T> {
+        self.registry
     }
 
     pub fn register_request<F>(&mut self, request: F) -> Result<(), RegisterRequestError>
@@ -40,13 +36,8 @@ impl<'a, T: Send + Sync> LoadPluginContext<'a, T> {
         F: Function<Output = T> + 'static,
     {
         {
-            if let Some(ord) = self
-                .requests
-                .as_ref()
-                .iter()
-                .find(|ord| *ord.name == request.name())
-            {
-                for input in ord.inputs.iter() {
+            if let Some(req) = self.requests.iter().find(|req| *req.name == request.name()) {
+                for input in req.inputs.iter() {
                     request
                         .inputs()
                         .iter()
@@ -54,7 +45,7 @@ impl<'a, T: Send + Sync> LoadPluginContext<'a, T> {
                         .ok_or(RegisterRequestError::ArgumentsIncorrectly)?;
                 }
 
-                if ord.output != request.output().map(|arg| arg.ty) {
+                if req.output != request.output().map(|arg| arg.ty) {
                     return Err(RegisterRequestError::ArgumentsIncorrectly);
                 }
             } else {
@@ -62,7 +53,7 @@ impl<'a, T: Send + Sync> LoadPluginContext<'a, T> {
             }
         }
 
-        self.plugin.as_mut().requests.push(Box::new(request));
+        self.plugin.requests.push(Box::new(request));
 
         Ok(())
     }

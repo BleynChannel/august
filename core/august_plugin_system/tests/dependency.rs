@@ -24,8 +24,6 @@ mod dependency {
         for path in get_dependencys_path() {
             loader.register_plugin(path.to_str().unwrap()).unwrap();
         }
-
-        loader.stop().unwrap();
     }
 
     #[test]
@@ -39,22 +37,15 @@ mod dependency {
         loader
             .load_plugin("dep_3", &Version::parse("1.0.0").unwrap())
             .unwrap();
-
-        loader.stop().unwrap();
     }
 
     #[test]
     fn load_plugins() {
         let mut loader = loader_init(VoidPluginManager::new());
 
-        let plugins =
-            match loader.load_plugins(get_dependencys_path().iter().map(|x| x.to_str().unwrap())) {
-                Ok(plugins) => plugins,
-                Err((Some(e), _, _)) => panic!("{:?}: {}", e, e.to_string()),
-                Err((_, Some(e), _)) => panic!("{:?}: {}", e, e.to_string()),
-                Err((_, _, Some(e))) => panic!("{:?}: {}", e, e.to_string()),
-                Err((_, _, _)) => panic!("Unexpected error"),
-            };
+        let plugins = loader
+            .load_plugins(get_dependencys_path().iter().map(|x| x.to_str().unwrap()))
+            .unwrap();
 
         for bundle in plugins {
             let plugin = loader.get_plugin_by_bundle(&bundle).unwrap();
@@ -64,7 +55,5 @@ mod dependency {
                 plugin.info().bundle
             );
         }
-
-        loader.stop().unwrap();
     }
 }

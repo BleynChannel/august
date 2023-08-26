@@ -3,7 +3,6 @@ use std::env::consts::OS;
 use crate::{config::NativeConfig, Plugin};
 use august_plugin_system::{
     context::LoadPluginContext,
-    function::Function,
     utils::{bundle::Bundle, ManagerResult, Ptr},
     Depend, Info, Loader, Manager, Plugin as StdPlugin, RegisterPluginContext,
 };
@@ -23,12 +22,12 @@ impl NativePluginManager {
     }
 }
 
-impl<'a, F: Function> Manager<'a, F> for NativePluginManager {
+impl<'a, T: Send + Sync> Manager<'a, T> for NativePluginManager {
     fn format(&self) -> &str {
         "npl"
     }
 
-    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, F>>) -> ManagerResult<()> {
+    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, T>>) -> ManagerResult<()> {
         Ok(())
     }
     fn unregister_manager(&mut self) -> ManagerResult<()> {
@@ -56,12 +55,12 @@ impl<'a, F: Function> Manager<'a, F> for NativePluginManager {
             .push(Plugin::new(context.bundle.clone(), info.clone(), config));
         Ok(info)
     }
-    fn unregister_plugin(&mut self, plugin: Ptr<'a, StdPlugin<'a, F>>) -> ManagerResult<()> {
-        self.remove_plugin(&plugin.as_ref().info().bundle);
+    fn unregister_plugin(&mut self, plugin: &StdPlugin<'a, T>) -> ManagerResult<()> {
+        self.remove_plugin(&plugin.info().bundle);
         Ok(())
     }
 
-    fn load_plugin(&mut self, context: LoadPluginContext<'a, F>) -> ManagerResult<()> {
+    fn load_plugin(&mut self, context: LoadPluginContext<'a, '_, T>) -> ManagerResult<()> {
         let plugin = context.plugin();
 
         // Загрузка библиотеки
@@ -92,8 +91,8 @@ impl<'a, F: Function> Manager<'a, F> for NativePluginManager {
         Ok(())
     }
 
-    fn unload_plugin(&mut self, plugin: Ptr<'a, StdPlugin<'a, F>>) -> ManagerResult<()> {
-        let bundle = &plugin.as_ref().info().bundle;
+    fn unload_plugin(&mut self, plugin: &StdPlugin<'a, T>) -> ManagerResult<()> {
+        let bundle = &plugin.info().bundle;
         self.plugins
             .iter_mut()
             .find(|p| p.bundle == *bundle)

@@ -1,14 +1,13 @@
 use std::path::PathBuf;
 
 use august_native_manager::NativePluginManager;
-use august_plugin_system::{function::DynamicFunction, Loader};
+use august_plugin_system::{function::FunctionOutput, Loader};
 
-pub fn loader_init<'a>() -> Loader<'a, DynamicFunction> {
+pub fn loader_init<'a>() -> Loader<'a, FunctionOutput> {
     let mut loader = Loader::new();
-    if let Err(e) = loader.context(move |mut ctx| ctx.register_manager(NativePluginManager::new()))
-    {
-        panic!("{:?}: {}", e, e.to_string())
-    };
+    loader
+        .context(move |mut ctx| ctx.register_manager(NativePluginManager::new()))
+        .unwrap();
     loader
 }
 

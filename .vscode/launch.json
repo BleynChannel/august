@@ -83,6 +83,25 @@
 		{
 			"type": "lldb",
 			"request": "launch",
+			"name": "Debug integration test 'version'",
+			"cargo": {
+				"args": [
+					"test",
+					"--no-run",
+					"--test=version",
+					"--package=august_plugin_system"
+				],
+				"filter": {
+					"name": "version",
+					"kind": "test"
+				}
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
 			"name": "Debug integration test 'main'",
 			"cargo": {
 				"args": [

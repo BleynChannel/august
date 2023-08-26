@@ -7,3 +7,4 @@ license = "MIT"
 dep_1 = "1.0.0"
 
 [optional_depends]
+dep_3 = "2.0.0"
