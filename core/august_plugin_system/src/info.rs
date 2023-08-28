@@ -11,7 +11,7 @@ pub struct PluginInfo<I: Info> {
     pub info: I,
 }
 
-pub trait Info {
+pub trait Info: Send + Sync {
     fn depends(&self) -> &Vec<Depend>;
     fn optional_depends(&self) -> &Vec<Depend>;
 }

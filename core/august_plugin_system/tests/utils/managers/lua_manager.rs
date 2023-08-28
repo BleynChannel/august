@@ -73,8 +73,13 @@ impl<'a> Manager<'a, FunctionOutput, StdInfo> for LuaPluginManager {
 
     fn register_plugin(
         &mut self,
-        _context: august_plugin_system::RegisterPluginContext,
+        context: august_plugin_system::RegisterPluginContext,
     ) -> ManagerResult<StdInfo> {
+        println!(
+            "FunctionPluginManager::register_plugin - {}",
+            context.bundle
+        );
+
         Ok(Default::default())
     }
 }

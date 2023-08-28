@@ -104,7 +104,7 @@ mod tests {
             _ => assert!(false),
         };
 
-		loader.stop().unwrap();
+        loader.stop().unwrap();
     }
 
     #[test]
@@ -128,6 +128,6 @@ mod tests {
             .load_plugins(paths.iter().map(|x| x.to_str().unwrap()))
             .unwrap();
 
-		loader.stop().unwrap();
+        loader.stop().unwrap();
     }
 }
