@@ -4,4 +4,4 @@ author = "Bleyn"
 license = "MIT"
 
 [depends]
-brush = "1.0.0"
+brush = ">=1.3.0, <=2.5.0"

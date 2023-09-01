@@ -1,4 +1,4 @@
-use august_plugin_system::{utils::bundle::Bundle, StdInfo};
+use august_plugin_system::{Bundle, StdInfo};
 use libloading::Library;
 
 use crate::NativeConfig;

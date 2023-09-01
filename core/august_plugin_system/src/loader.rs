@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use rayon::prelude::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
@@ -8,19 +6,18 @@ use semver::Version;
 
 use crate::{
     utils::{
-        bundle::Bundle, LoadPluginError, PluginCallRequest, Ptr, RegisterManagerError,
-        RegisterPluginError, StopLoaderError, UnloadPluginError, UnregisterManagerError,
-        UnregisterPluginError,
+        LoadPluginError, PluginCallRequestError, Ptr, RegisterManagerError, RegisterPluginError,
+        StopLoaderError, UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
     },
     variable::Variable,
-    Info, LoaderContext, Manager, Plugin, PluginInfo, Registry, Requests,
+    Bundle, Info, LoaderContext, Manager, Plugin, PluginInfo, Registry, Requests,
 };
 
 pub struct Loader<'a, O: Send + Sync, I: Info> {
-    managers: Vec<Box<dyn Manager<'a, O, I>>>,
+    pub(crate) managers: Vec<Box<dyn Manager<'a, O, I>>>,
     pub(crate) registry: Registry<O>,
     pub(crate) requests: Requests,
-    plugins: Vec<Plugin<'a, O, I>>,
+    pub(crate) plugins: Vec<Plugin<'a, O, I>>,
 }
 
 impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
@@ -53,6 +50,13 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
         private_loader::register_manager(self, Box::new(manager))
     }
 
+    pub unsafe fn forced_register_manager(
+        &mut self,
+        manager: Box<dyn Manager<'a, O, I>>,
+    ) -> Result<(), RegisterManagerError> {
+        private_loader::forced_register_manager(self, manager)
+    }
+
     pub fn register_managers<M>(&mut self, managers: M) -> Result<(), RegisterManagerError>
     where
         M: IntoIterator<Item = Box<dyn Manager<'a, O, I>>>,
@@ -64,26 +68,16 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
         Ok(())
     }
 
-    pub fn par_register_managers<M>(
-        self: Arc<Self>,
-        managers: M,
-    ) -> Result<(), RegisterManagerError>
+    pub fn par_register_managers<M>(&mut self, managers: M) -> Result<(), RegisterManagerError>
     where
         M: IntoParallelIterator<Item = Box<dyn Manager<'a, O, I>>>,
     {
-        managers.into_par_iter().try_for_each(|manager| {
-            let this = unsafe { &mut *Arc::downgrade(&self).as_ptr().cast_mut() };
-            private_loader::register_manager(this, manager)
+        let this = Ptr::new(self);
+        managers.into_par_iter().try_for_each(move |manager| {
+            private_loader::register_manager(this.as_mut(), manager)
         })?;
 
         Ok(())
-    }
-
-    pub unsafe fn forced_register_manager(
-        &mut self,
-        manager: Box<dyn Manager<'a, O, I>>,
-    ) -> Result<(), RegisterManagerError> {
-        private_loader::forced_register_manager(self, manager)
     }
 
     pub fn unregister_manager(&mut self, format: &str) -> Result<(), UnregisterManagerError> {
@@ -127,6 +121,7 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
             .find_first(|m| m.format() == format)
     }
 
+	//TODO: Добавить параллельную версию
     pub fn register_plugin(&mut self, path: &str) -> Result<Bundle, RegisterPluginError> {
         private_loader::register_plugin(self, path)
     }
@@ -137,6 +132,31 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
         plugin_info: PluginInfo<I>,
     ) -> Result<Bundle, RegisterPluginError> {
         private_loader::forced_register_plugin(&mut self.plugins, Ptr::new(manager), plugin_info)
+    }
+
+	pub fn register_plugins<'b, P>(&mut self, paths: P) -> Result<Vec<Bundle>, RegisterPluginError>
+    where
+        P: IntoIterator<Item = &'b str>,
+    {
+        paths
+            .into_iter()
+            .map(|path| private_loader::register_plugin(self, path))
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    pub fn par_register_plugins<'b, P>(
+        &mut self,
+        paths: P,
+    ) -> Result<Vec<Bundle>, RegisterPluginError>
+    where
+        P: IntoParallelIterator<Item = &'b str>,
+    {
+        let this = Ptr::new(self);
+
+        paths
+            .into_par_iter()
+            .map(move |path| private_loader::register_plugin(this.as_mut(), path))
+            .collect::<Result<Vec<_>, _>>()
     }
 
     pub fn unregister_plugin(
@@ -181,46 +201,6 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
         index: usize,
     ) -> Result<(), UnregisterPluginError> {
         private_loader::forced_unregister_plugin(&mut self.plugins, index)
-    }
-
-    pub fn load_plugin(&mut self, id: &str, version: &Version) -> Result<(), LoadPluginError> {
-        let index = self
-            .plugins
-            .iter()
-            .position(|plugin| *plugin == (id, version))
-            .ok_or(LoadPluginError::NotFound)?;
-        private_loader::load_plugin(self, index)
-    }
-
-    pub fn par_load_plugin(&mut self, id: &str, version: &Version) -> Result<(), LoadPluginError> {
-        let index = self
-            .plugins
-            .par_iter()
-            .position_first(|plugin| *plugin == (id, version))
-            .ok_or(LoadPluginError::NotFound)?;
-        private_loader::load_plugin(self, index)
-    }
-
-    pub fn load_plugin_by_bundle(&mut self, bundle: &Bundle) -> Result<(), LoadPluginError> {
-        let index = self
-            .plugins
-            .iter()
-            .position(|plugin| *plugin == *bundle)
-            .ok_or(LoadPluginError::NotFound)?;
-        private_loader::load_plugin(self, index)
-    }
-
-    pub fn par_load_plugin_by_bundle(&mut self, bundle: &Bundle) -> Result<(), LoadPluginError> {
-        let index = self
-            .plugins
-            .par_iter()
-            .position_first(|plugin| *plugin == *bundle)
-            .ok_or(LoadPluginError::NotFound)?;
-        private_loader::load_plugin(self, index)
-    }
-
-    pub unsafe fn forced_load_plugin(&mut self, index: usize) -> Result<(), LoadPluginError> {
-        private_loader::forced_load_plugin(self, index)
     }
 
     pub fn unload_plugin(&mut self, id: &str, version: &Version) -> Result<(), UnloadPluginError> {
@@ -268,269 +248,6 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
 
     pub unsafe fn forced_unload_plugin(&mut self, index: usize) -> Result<(), UnloadPluginError> {
         private_loader::forced_unload_plugin(&mut self.plugins, index)
-    }
-
-    pub fn register_plugins<'b, P>(&mut self, paths: P) -> Result<Vec<Bundle>, RegisterPluginError>
-    where
-        P: IntoIterator<Item = &'b str>,
-    {
-        paths
-            .into_iter()
-            .map(|path| private_loader::register_plugin(self, path))
-            .collect::<Result<Vec<_>, _>>()
-    }
-
-    pub fn par_register_plugins<'b, P>(
-        self: Arc<Self>,
-        paths: P,
-    ) -> Result<Vec<Bundle>, RegisterPluginError>
-    where
-        P: IntoParallelIterator<Item = &'b str>,
-    {
-        paths
-            .into_par_iter()
-            .map(|path| {
-                let this = unsafe { &mut *Arc::downgrade(&self).as_ptr().cast_mut() };
-                private_loader::register_plugin(this, path)
-            })
-            .collect::<Result<Vec<_>, _>>()
-    }
-
-    pub fn load_plugin_now(
-        &mut self,
-        path: &str,
-    ) -> Result<Bundle, (Option<RegisterPluginError>, Option<LoadPluginError>)> {
-        let bundle = private_loader::register_plugin(self, path).map_err(|e| (Some(e), None))?;
-        self.load_plugin_by_bundle(&bundle)
-            .map_err(|e| (None, Some(e)))?;
-        Ok(bundle)
-    }
-
-    pub fn load_plugins<'b, P>(
-        &mut self,
-        paths: P,
-    ) -> Result<Vec<Bundle>, (Option<RegisterPluginError>, Option<LoadPluginError>)>
-    where
-        P: IntoIterator<Item = &'b str>,
-    {
-        let bundles = self.register_plugins(paths).map_err(|e| (Some(e), None))?;
-
-        // Перебор плагинов, которые не являются зависимостями для других плагинов
-        let result: Vec<_> = self
-            .plugins
-            .iter()
-            .enumerate()
-            .filter_map(|(index, plugin)| {
-                let find_plugin = self.plugins.iter().find(|pl| {
-                    pl.info
-                        .info
-                        .depends()
-                        .iter()
-                        .chain(pl.info.info.optional_depends().iter())
-                        .any(|d| *d == plugin.info.bundle)
-                });
-
-                match find_plugin {
-                    Some(_) => None,
-                    None => Some(index),
-                }
-            })
-            .collect();
-
-        result.into_iter().try_for_each(|index| {
-            private_loader::load_plugin(self, index).map_err(|e| (None, Some(e)))
-        })?;
-
-        Ok(bundles)
-    }
-
-    pub fn par_load_plugins<'b, P>(
-        self: Arc<Self>,
-        paths: P,
-    ) -> Result<Vec<Bundle>, (Option<RegisterPluginError>, Option<LoadPluginError>)>
-    where
-        P: IntoParallelIterator<Item = &'b str>,
-    {
-        let bundles = self
-            .clone()
-            .par_register_plugins(paths)
-            .map_err(|e| (Some(e), None))?;
-
-        // Перебор плагинов, которые не являются зависимостями для других плагинов
-        let result: Vec<_> = self
-            .plugins
-            .par_iter()
-            .enumerate()
-            .filter_map(|(index, plugin)| {
-                let find_plugin = self.plugins.iter().find(|pl| {
-                    pl.info
-                        .info
-                        .depends()
-                        .iter()
-                        .chain(pl.info.info.optional_depends().iter())
-                        .any(|d| *d == plugin.info.bundle)
-                });
-
-                match find_plugin {
-                    Some(_) => None,
-                    None => Some(index),
-                }
-            })
-            .collect();
-
-        result.into_par_iter().try_for_each(|index| {
-            let this = unsafe { &mut *Arc::downgrade(&self).as_ptr().cast_mut() };
-
-            private_loader::load_plugin(this, index).map_err(|e| (None, Some(e)))
-        })?;
-
-        Ok(bundles)
-    }
-
-    pub fn load_only_used_plugins<'b, P>(
-        &mut self,
-        paths: P,
-    ) -> Result<
-        Vec<Bundle>,
-        (
-            Option<RegisterPluginError>,
-            Option<UnregisterPluginError>,
-            Option<LoadPluginError>,
-        ),
-    >
-    where
-        P: IntoIterator<Item = &'b str>,
-    {
-        let bundles = self
-            .register_plugins(paths)
-            .map_err(|e| (Some(e), None, None))?;
-
-        // Перебор плагинов, которые не являются зависимостями для других плагинов
-        let (used, unused): (Vec<_>, Vec<_>) = self
-            .plugins
-            .iter()
-            .enumerate()
-            .filter_map(|(index, plugin)| {
-                let find_plugin = self.plugins.iter().find(|pl| {
-                    pl.info
-                        .info
-                        .depends()
-                        .iter()
-                        .chain(pl.info.info.optional_depends().iter())
-                        .any(|d| *d == plugin.info.bundle)
-                });
-
-                match find_plugin {
-                    Some(_) => None,
-                    None => Some(index),
-                }
-            })
-            .partition(|index| {
-                let bundle = &self.plugins[*index].info.bundle;
-
-                // Ищем самую высокую версию
-                self.plugins
-                    .iter()
-                    .find(|pl| {
-                        pl.info.bundle.id == bundle.id && pl.info.bundle.version > bundle.version
-                    })
-                    .is_none()
-            });
-
-        used.into_iter().try_for_each(|index| {
-            private_loader::load_plugin(self, index).map_err(|e| (None, None, Some(e)))
-        })?;
-
-        let mut old_indexs = vec![];
-        let mut unused = unused.into_iter();
-
-        while let Some(index) = unused.next() {
-            let swap = old_indexs
-                .iter()
-                .fold(0, |acc, i| if index > *i { acc + 1 } else { acc });
-
-            private_loader::unregister_plugin(&mut self.plugins, index - swap)
-                .map_err(|e| (None, Some(e), None))?;
-
-            old_indexs.push(index);
-        }
-
-        Ok(bundles)
-    }
-
-    pub fn par_load_only_used_plugins<'b, P>(
-        self: Arc<Self>,
-        paths: P,
-    ) -> Result<
-        Vec<Bundle>,
-        (
-            Option<RegisterPluginError>,
-            Option<UnregisterPluginError>,
-            Option<LoadPluginError>,
-        ),
-    >
-    where
-        P: IntoParallelIterator<Item = &'b str>,
-    {
-        let bundles = self
-            .clone()
-            .par_register_plugins(paths)
-            .map_err(|e| (Some(e), None, None))?;
-
-        // Перебор плагинов, которые не являются зависимостями для других плагинов
-        let (used, unused): (Vec<_>, Vec<_>) = self
-            .plugins
-            .iter()
-            .enumerate()
-            .filter_map(|(index, plugin)| {
-                let find_plugin = self.plugins.iter().find(|pl| {
-                    pl.info
-                        .info
-                        .depends()
-                        .iter()
-                        .chain(pl.info.info.optional_depends().iter())
-                        .any(|d| *d == plugin.info.bundle)
-                });
-
-                match find_plugin {
-                    Some(_) => None,
-                    None => Some(index),
-                }
-            })
-            .partition(|index| {
-                let bundle = &self.plugins[*index].info.bundle;
-
-                // Ищем самую высокую версию
-                self.plugins
-                    .iter()
-                    .find(|pl| {
-                        pl.info.bundle.id == bundle.id && pl.info.bundle.version > bundle.version
-                    })
-                    .is_none()
-            });
-
-        used.into_iter().try_for_each(|index| {
-            let this = unsafe { &mut *Arc::downgrade(&self).as_ptr().cast_mut() };
-
-            private_loader::load_plugin(this, index).map_err(|e| (None, None, Some(e)))
-        })?;
-
-        let mut old_indexs = vec![];
-        let mut unused = unused.into_iter();
-
-        while let Some(index) = unused.next() {
-            let swap = old_indexs
-                .iter()
-                .fold(0, |acc, i| if index > *i { acc + 1 } else { acc });
-
-            let this = unsafe { &mut *Arc::downgrade(&self).as_ptr().cast_mut() };
-            private_loader::unregister_plugin(&mut this.plugins, index - swap)
-                .map_err(|e| (None, Some(e), None))?;
-
-            old_indexs.push(index);
-        }
-
-        Ok(bundles)
     }
 
     pub fn get_plugin(&self, id: &str, version: &Version) -> Option<&Plugin<'a, O, I>> {
@@ -625,7 +342,11 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
         &self.requests
     }
 
-    pub fn call_request(&self, name: &str, args: &[Variable]) -> Result<Vec<O>, PluginCallRequest> {
+    pub fn call_request(
+        &self,
+        name: &str,
+        args: &[Variable],
+    ) -> Result<Vec<O>, PluginCallRequestError> {
         self.plugins
             .iter()
             .filter_map(|plugin| {
@@ -646,18 +367,22 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
         &self,
         name: &str,
         args: &[Variable],
-    ) -> Result<Vec<O>, PluginCallRequest> {
-        let requests: Vec<_> = self.plugins.iter().filter_map(|plugin| {
-			let check_version = self.plugins.iter().find(|pl| {
-				pl.info.bundle.id == plugin.info.bundle.id
-					&& pl.info.bundle.version > plugin.info.bundle.version
-			});
+    ) -> Result<Vec<O>, PluginCallRequestError> {
+        let requests: Vec<_> = self
+            .plugins
+            .iter()
+            .filter_map(|plugin| {
+                let check_version = self.plugins.iter().find(|pl| {
+                    pl.info.bundle.id == plugin.info.bundle.id
+                        && pl.info.bundle.version > plugin.info.bundle.version
+                });
 
-			match check_version {
-				Some(_) => None,
-				None => Some(&plugin.requests),
-			}
-		}).collect();
+                match check_version {
+                    Some(_) => None,
+                    None => Some(&plugin.requests),
+                }
+            })
+            .collect();
 
         requests
             .into_par_iter()
@@ -668,9 +393,332 @@ impl<'a, O: Send + Sync, I: Info> Loader<'a, O, I> {
                         true => Some(request.call(args)),
                         false => None,
                     })
-                    .ok_or(PluginCallRequest::NotFound)
+                    .ok_or(PluginCallRequestError::NotFound)
             })
             .collect()
+    }
+}
+
+impl<O: Send + Sync + 'static, I: Info + 'static> Loader<'static, O, I> {
+    pub fn load_plugin(&mut self, id: &str, version: &Version) -> Result<(), LoadPluginError> {
+        let index = self
+            .plugins
+            .iter()
+            .position(|plugin| *plugin == (id, version))
+            .ok_or(LoadPluginError::NotFound)?;
+        private_loader::load_plugin(self, index)
+    }
+
+    pub fn par_load_plugin(&mut self, id: &str, version: &Version) -> Result<(), LoadPluginError> {
+        let index = self
+            .plugins
+            .par_iter()
+            .position_first(|plugin| *plugin == (id, version))
+            .ok_or(LoadPluginError::NotFound)?;
+        private_loader::load_plugin(self, index)
+    }
+
+    pub fn load_plugin_by_bundle(&mut self, bundle: &Bundle) -> Result<(), LoadPluginError> {
+        let index = self
+            .plugins
+            .iter()
+            .position(|plugin| *plugin == *bundle)
+            .ok_or(LoadPluginError::NotFound)?;
+        private_loader::load_plugin(self, index)
+    }
+
+    pub fn par_load_plugin_by_bundle(&mut self, bundle: &Bundle) -> Result<(), LoadPluginError> {
+        let index = self
+            .plugins
+            .par_iter()
+            .position_first(|plugin| *plugin == *bundle)
+            .ok_or(LoadPluginError::NotFound)?;
+        private_loader::load_plugin(self, index)
+    }
+
+    pub unsafe fn forced_load_plugin(
+        &mut self,
+        index: usize,
+        depends: Vec<(Bundle, bool)>,
+    ) -> Result<(), LoadPluginError> {
+        private_loader::forced_load_plugin(self, index, depends)
+    }
+
+    pub fn load_plugin_now(
+        &mut self,
+        path: &str,
+    ) -> Result<Bundle, (Option<RegisterPluginError>, Option<LoadPluginError>)> {
+        let bundle = private_loader::register_plugin(self, path).map_err(|e| (Some(e), None))?;
+        self.load_plugin_by_bundle(&bundle)
+            .map_err(|e| (None, Some(e)))?;
+        Ok(bundle)
+    }
+
+    pub fn load_plugins<'b, P>(
+        &mut self,
+        paths: P,
+    ) -> Result<Vec<Bundle>, (Option<RegisterPluginError>, Option<LoadPluginError>)>
+    where
+        P: IntoIterator<Item = &'b str>,
+    {
+        let bundles = self.register_plugins(paths).map_err(|e| (Some(e), None))?;
+
+        // Перебор плагинов, которые не являются зависимостями для других плагинов
+        let result: Vec<_> = self
+            .plugins
+            .iter()
+            .enumerate()
+            .filter_map(|(index, plugin)| {
+                let find_plugin = self.plugins.iter().find(|pl| {
+                    pl.info
+                        .info
+                        .depends()
+                        .iter()
+                        .chain(pl.info.info.optional_depends().iter())
+                        .any(|d| {
+                            *d == plugin.info.bundle
+                                && self
+                                    .plugins
+                                    .iter()
+                                    .find(|p| {
+                                        d.version.matches(&p.info.bundle.version)
+                                            && p.info.bundle.version > plugin.info.bundle.version
+                                    })
+                                    .is_none()
+                        })
+                });
+
+                match find_plugin {
+                    Some(_) => None,
+                    None => Some(index),
+                }
+            })
+            .collect();
+
+        result.into_iter().try_for_each(|index| {
+            private_loader::load_plugin(self, index).map_err(|e| (None, Some(e)))
+        })?;
+
+        Ok(bundles)
+    }
+
+    pub fn par_load_plugins<'b, P>(
+        &mut self,
+        paths: P,
+    ) -> Result<Vec<Bundle>, (Option<RegisterPluginError>, Option<LoadPluginError>)>
+    where
+        P: IntoParallelIterator<Item = &'b str>,
+    {
+        let bundles = self
+            .par_register_plugins(paths)
+            .map_err(|e| (Some(e), None))?;
+
+        // Перебор плагинов, которые не являются зависимостями для других плагинов
+        let result: Vec<_> = self
+            .plugins
+            .par_iter()
+            .enumerate()
+            .filter_map(|(index, plugin)| {
+                let find_plugin = self.plugins.iter().find(|pl| {
+                    pl.info
+                        .info
+                        .depends()
+                        .iter()
+                        .chain(pl.info.info.optional_depends().iter())
+                        .any(|d| {
+                            *d == plugin.info.bundle
+                                && self
+                                    .plugins
+                                    .iter()
+                                    .find(|p| {
+                                        d.version.matches(&p.info.bundle.version)
+                                            && p.info.bundle.version > plugin.info.bundle.version
+                                    })
+                                    .is_none()
+                        })
+                });
+
+                match find_plugin {
+                    Some(_) => None,
+                    None => Some(index),
+                }
+            })
+            .collect();
+
+        let this = Ptr::new(self);
+        result.into_par_iter().try_for_each(move |index| {
+            private_loader::load_plugin(this.as_mut(), index).map_err(|e| (None, Some(e)))
+        })?;
+
+        Ok(bundles)
+    }
+
+    pub fn load_only_used_plugins<'b, P>(
+        &mut self,
+        paths: P,
+    ) -> Result<
+        Vec<Bundle>,
+        (
+            Option<RegisterPluginError>,
+            Option<UnregisterPluginError>,
+            Option<LoadPluginError>,
+        ),
+    >
+    where
+        P: IntoIterator<Item = &'b str>,
+    {
+        let mut bundles = self
+            .register_plugins(paths)
+            .map_err(|e| (Some(e), None, None))?;
+
+        // Перебор плагинов, которые не являются зависимостями для других плагинов
+        let (used, unused): (Vec<_>, Vec<_>) = self
+            .plugins
+            .iter()
+            .enumerate()
+            .filter_map(|(index, plugin)| {
+                let find_plugin = self.plugins.iter().find(|pl| {
+                    pl.info
+                        .info
+                        .depends()
+                        .iter()
+                        .chain(pl.info.info.optional_depends().iter())
+                        .any(|d| {
+                            *d == plugin.info.bundle
+                                && self
+                                    .plugins
+                                    .iter()
+                                    .find(|p| {
+                                        d.version.matches(&p.info.bundle.version)
+                                            && p.info.bundle.version > plugin.info.bundle.version
+                                    })
+                                    .is_none()
+                        })
+                });
+
+                match find_plugin {
+                    Some(_) => None,
+                    None => Some(index),
+                }
+            })
+            .partition(|index| {
+                let bundle = &self.plugins[*index].info.bundle;
+
+                // Ищем самую высокую версию
+                self.plugins
+                    .iter()
+                    .find(|pl| {
+                        pl.info.bundle.id == bundle.id && pl.info.bundle.version > bundle.version
+                    })
+                    .is_none()
+            });
+
+        used.into_iter().try_for_each(|index| {
+            private_loader::load_plugin(self, index).map_err(|e| (None, None, Some(e)))
+        })?;
+
+        let mut old_indexs = vec![];
+        let mut unused = unused.into_iter();
+
+        while let Some(index) = unused.next() {
+            let swap = old_indexs
+                .iter()
+                .fold(0, |acc, i| if index > *i { acc + 1 } else { acc });
+
+            let new_index = index - swap;
+
+            let bundle = &self.plugins[new_index].info.bundle;
+            bundles.retain(|b| *b != *bundle);
+
+            private_loader::unregister_plugin(&mut self.plugins, new_index)
+                .map_err(|e| (None, Some(e), None))?;
+
+            old_indexs.push(index);
+        }
+
+        Ok(bundles)
+    }
+
+    pub fn par_load_only_used_plugins<'b, P>(
+        &mut self,
+        paths: P,
+    ) -> Result<
+        Vec<Bundle>,
+        (
+            Option<RegisterPluginError>,
+            Option<UnregisterPluginError>,
+            Option<LoadPluginError>,
+        ),
+    >
+    where
+        P: IntoParallelIterator<Item = &'b str>,
+    {
+        let bundles = self
+            .par_register_plugins(paths)
+            .map_err(|e| (Some(e), None, None))?;
+
+        // Перебор плагинов, которые не являются зависимостями для других плагинов
+        let (used, unused): (Vec<_>, Vec<_>) = self
+            .plugins
+            .iter()
+            .enumerate()
+            .filter_map(|(index, plugin)| {
+                let find_plugin = self.plugins.iter().find(|pl| {
+                    pl.info
+                        .info
+                        .depends()
+                        .iter()
+                        .chain(pl.info.info.optional_depends().iter())
+                        .any(|d| {
+                            *d == plugin.info.bundle
+                                && self
+                                    .plugins
+                                    .iter()
+                                    .find(|p| {
+                                        d.version.matches(&p.info.bundle.version)
+                                            && p.info.bundle.version > plugin.info.bundle.version
+                                    })
+                                    .is_none()
+                        })
+                });
+
+                match find_plugin {
+                    Some(_) => None,
+                    None => Some(index),
+                }
+            })
+            .partition(|index| {
+                let bundle = &self.plugins[*index].info.bundle;
+
+                // Ищем самую высокую версию
+                self.plugins
+                    .iter()
+                    .find(|pl| {
+                        pl.info.bundle.id == bundle.id && pl.info.bundle.version > bundle.version
+                    })
+                    .is_none()
+            });
+
+        let this = Ptr::new(self);
+        used.into_iter().try_for_each(|index| {
+            private_loader::load_plugin(this.as_mut(), index).map_err(|e| (None, None, Some(e)))
+        })?;
+
+        let mut old_indexs = vec![];
+        let mut unused = unused.into_iter();
+
+        while let Some(index) = unused.next() {
+            let swap = old_indexs
+                .iter()
+                .fold(0, |acc, i| if index > *i { acc + 1 } else { acc });
+
+            private_loader::unregister_plugin(&mut this.as_mut().plugins, index - swap)
+                .map_err(|e| (None, Some(e), None))?;
+
+            old_indexs.push(index);
+        }
+
+        Ok(bundles)
     }
 }
 
@@ -685,10 +733,11 @@ mod private_loader {
 
     use crate::{
         utils::{
-            bundle::Bundle, LoadPluginError, Ptr, RegisterManagerError, RegisterPluginError,
-            StopLoaderError, UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
+            LoadPluginError, Ptr, RegisterManagerError, RegisterPluginError, StopLoaderError,
+            UnloadPluginError, UnregisterManagerError, UnregisterPluginError,
         },
-        Depend, Info, LoadPluginContext, Manager, Plugin, PluginInfo, RegisterPluginContext,
+        Api, Bundle, Depend, Info, LoadPluginContext, Manager, Plugin, PluginInfo,
+        RegisterPluginContext,
     };
 
     pub fn stop_plugins<O: Send + Sync, I: Info>(
@@ -774,13 +823,24 @@ mod private_loader {
         let mut result = vec![];
 
         'outer: for index in plugins_set.iter() {
+            let bundle = &plugins[*index].info.bundle;
+
             let find_plugin = plugins.iter().enumerate().find_map(|(i, pl)| {
                 pl.info
                     .info
                     .depends()
                     .iter()
                     .chain(pl.info.info.optional_depends().iter())
-                    .any(|d| *d == plugins[*index])
+                    .any(|d| {
+                        *d == *bundle
+                            && plugins
+                                .iter()
+                                .find(|p| {
+                                    d.version.matches(&p.info.bundle.version)
+                                        && p.info.bundle.version > bundle.version
+                                })
+                                .is_none()
+                    })
                     .then_some(i)
             });
 
@@ -814,12 +874,29 @@ mod private_loader {
             .iter()
             .chain(plugin_info.info.optional_depends().iter());
         'outer: for depend in depends {
-            if !result.iter().any(|inx| plugins[*inx] == *depend) {
+            if !result.iter().any(|inx| {
+                *depend == plugins[*inx].info.bundle
+                    && plugins
+                        .iter()
+                        .find(|p| {
+                            depend.version.matches(&p.info.bundle.version)
+                                && p.info.bundle.version > plugins[*inx].info.bundle.version
+                        })
+                        .is_none()
+            }) {
                 let mut plugin = None;
 
                 for index in plugins_set.iter() {
                     let plug_info = &plugins[*index].info;
-                    if plug_info.bundle == *depend {
+                    if *depend == plug_info.bundle
+                        && plugins
+                            .iter()
+                            .find(|p| {
+                                depend.version.matches(&p.info.bundle.version)
+                                    && p.info.bundle.version > plug_info.bundle.version
+                            })
+                            .is_none()
+                    {
                         plugin = Some(index);
                         continue;
                     }
@@ -845,7 +922,7 @@ mod private_loader {
         loader: &mut super::Loader<'a, O, I>,
         mut manager: Box<dyn Manager<'a, O, I>>,
     ) -> Result<(), RegisterManagerError> {
-        manager.as_mut().register_manager(Ptr::<'a>::new(loader))?;
+        manager.as_mut().register_manager()?;
         loader.managers.push(manager);
         Ok(())
     }
@@ -990,50 +1067,77 @@ mod private_loader {
     }
 
     pub fn forced_load_plugin<O: Send + Sync, I: Info>(
-        loader: &mut super::Loader<'_, O, I>,
+        loader: *mut super::Loader<'static, O, I>,
         index: usize,
+        depends: Vec<(Bundle, bool)>,
     ) -> Result<(), LoadPluginError> {
-        let manager = Ptr::new(loader.plugins[index].manager.as_ptr());
+        let manager = Ptr::new(unsafe { &*loader }.plugins[index].manager.as_ptr());
 
-        manager.as_mut().load_plugin(LoadPluginContext::new(
-            &mut loader.plugins[index],
-            &loader.requests,
-            &loader.registry,
-        ))?;
+        // Получаем плагин и его зависимости
+        let plugin = &mut unsafe { &mut *loader }.plugins[index];
 
-        loader.plugins[index].is_load = true;
+        // Делим зависимости
+        let mut deps = vec![];
+        let mut opt_deps = vec![];
+
+        for (bundle, is_depend) in depends {
+            match is_depend {
+                true => deps.push(bundle),
+                false => opt_deps.push(bundle),
+            }
+        }
+
+        // Загружаем плагин
+        let bundle = plugin.info.bundle.clone();
+
+        manager.as_mut().load_plugin(
+            LoadPluginContext::new(plugin, &unsafe { &*loader }.requests),
+            Api::new(Ptr::new(loader), bundle, deps, opt_deps),
+        )?;
+
+        plugin.is_load = true;
 
         Ok(())
     }
 
     fn load_depends<'a, O, I, IT>(
-        loader: &'a mut super::Loader<'_, O, I>,
+        loader: &'a mut super::Loader<'static, O, I>,
         depends_iter: IT,
-    ) -> Result<Vec<Depend>, LoadPluginError>
+    ) -> Result<(Vec<(Bundle, bool)>, Vec<Depend>), LoadPluginError>
     where
         O: Send + Sync,
         I: Info,
         IT: IntoIterator<Item = (bool, Depend)>,
     {
+        let mut found_depends = vec![];
         let mut not_found_depends = vec![];
 
         for (is_depend, depend) in depends_iter.into_iter() {
-            if let Some(_) = loader.plugins.iter().find(|p| p.info.bundle == depend) {
-                loader
-                    .load_plugin(&depend.id, &depend.version)
-                    .map_err(|e| LoadPluginError::LoadDependency {
-                        depend: depend,
-                        error: Box::new(e),
-                    })?;
+            if let Some((index, plugin)) = loader.plugins.iter().enumerate().find(|(_, plugin)| {
+                depend == plugin.info.bundle
+                    && loader
+                        .plugins
+                        .iter()
+                        .find(|p| {
+                            depend.version.matches(&p.info.bundle.version)
+                                && p.info.bundle.version > plugin.info.bundle.version
+                        })
+                        .is_none()
+            }) {
+                found_depends.push((plugin.info.bundle.clone(), is_depend));
+                load_plugin(loader, index).map_err(|e| LoadPluginError::LoadDependency {
+                    depend: depend,
+                    error: Box::new(e),
+                })?;
             } else if is_depend {
                 not_found_depends.push(depend);
             }
         }
-        Ok(not_found_depends)
+        Ok((found_depends, not_found_depends))
     }
 
     fn check_requests<O: Send + Sync, I: Info>(
-        loader: &mut super::Loader<'_, O, I>,
+        loader: &mut super::Loader<'static, O, I>,
         index: usize,
     ) -> Vec<String> {
         let mut plugin_requests = loader.plugins[index].requests.iter();
@@ -1048,7 +1152,7 @@ mod private_loader {
     }
 
     pub fn load_plugin<O: Send + Sync, I: Info>(
-        loader: &mut super::Loader<'_, O, I>,
+        loader: &mut super::Loader<'static, O, I>,
         index: usize,
     ) -> Result<(), LoadPluginError> {
         if loader.plugins[index].is_load {
@@ -1070,14 +1174,14 @@ mod private_loader {
                     .into_iter()
                     .map(|d| (false, d)),
             );
-        let not_found_depends = load_depends(loader, depends_iter)?;
+        let (found_depends, not_found_depends) = load_depends(loader, depends_iter)?;
 
         if !not_found_depends.is_empty() {
             return Err(LoadPluginError::NotFoundDependencies(not_found_depends));
         }
 
         // Загружаем плагин
-        forced_load_plugin(loader, index)?;
+        forced_load_plugin(loader, index, found_depends)?;
 
         // Проверяем наличие запрашиваемых функций
         let not_found_requests = check_requests(loader, index);
@@ -1122,7 +1226,16 @@ mod private_loader {
                     .depends()
                     .iter()
                     .chain(plug_info.info.optional_depends().iter())
-                    .find(|depend| **depend == *bundle)
+                    .find(|depend| {
+                        **depend == *bundle
+                            && plugins
+                                .iter()
+                                .find(|p| {
+                                    depend.version.matches(&p.info.bundle.version)
+                                        && p.info.bundle.version > bundle.version
+                                })
+                                .is_none()
+                    })
                     .is_some();
                 match plug.is_load && find_depend {
                     true => Err(UnloadPluginError::CurrentlyUsesDepend {

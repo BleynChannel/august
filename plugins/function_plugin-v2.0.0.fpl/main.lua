@@ -11,3 +11,5 @@ end
 function echo(message)
 	return "Message v.2.0.0: " .. message;
 end
+
+return {}

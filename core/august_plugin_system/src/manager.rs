@@ -1,13 +1,11 @@
 use crate::{
-    context::LoadPluginContext,
-    utils::{ManagerResult, Ptr},
-    Info, Loader, Plugin, RegisterPluginContext,
+    context::LoadPluginContext, utils::ManagerResult, Api, Info, Plugin, RegisterPluginContext,
 };
 
 pub trait Manager<'a, O: Send + Sync, I: Info>: Send + Sync {
     fn format(&self) -> &str;
 
-    fn register_manager(&mut self, _loader: Ptr<'a, Loader<'a, O, I>>) -> ManagerResult<()> {
+    fn register_manager(&mut self) -> ManagerResult<()> {
         Ok(())
     }
 
@@ -21,7 +19,11 @@ pub trait Manager<'a, O: Send + Sync, I: Info>: Send + Sync {
         Ok(())
     }
 
-    fn load_plugin(&mut self, _context: LoadPluginContext<'a, '_, O, I>) -> ManagerResult<()> {
+    fn load_plugin(
+        &mut self,
+        _context: LoadPluginContext<'a, '_, O, I>,
+        _api: Api<O, I>,
+    ) -> ManagerResult<()> {
         Ok(())
     }
 

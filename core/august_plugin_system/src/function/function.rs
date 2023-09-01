@@ -13,6 +13,16 @@ pub trait Function: Send + Sync {
     fn call(&self, args: &[Variable]) -> Self::Output;
 }
 
+impl<O: Send + Sync> PartialEq for dyn Function<Output = O> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name() == other.name()
+            && self.inputs() == other.inputs()
+            && self.output() == other.output()
+    }
+}
+
+impl<O: Send + Sync> Eq for dyn Function<Output = O> {}
+
 impl<O: Send + Sync> Display for dyn Function<Output = O> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         //TODO: Внедрить описание функций в August

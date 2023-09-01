@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs, path::PathBuf};
 
 use august_plugin_system::{utils::ManagerResult, Depend, StdInfo};
-use semver::Version;
+use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -10,8 +10,8 @@ pub struct Config {
     pub description: String,
     pub author: String,
     pub license: Option<String>,
-    pub depends: Option<HashMap<String, Version>>,
-    pub optional_depends: Option<HashMap<String, Version>>,
+    pub depends: Option<HashMap<String, VersionReq>>,
+    pub optional_depends: Option<HashMap<String, VersionReq>>,
 }
 
 #[derive(thiserror::Error, Debug)]

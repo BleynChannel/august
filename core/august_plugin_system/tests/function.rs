@@ -6,6 +6,7 @@ extern crate codegen;
 mod tests {
     use august_plugin_system::{function::Request, variable::VariableType, Loader};
     use codegen::function;
+    use semver::Version;
 
     use crate::utils::{benchmark, get_plugin_path, LuaPluginManager, VoidPluginManager};
 
@@ -84,7 +85,7 @@ mod tests {
             .call_request("echo", &["Hello world".into()])
             .unwrap()
         {
-            Err(e) => match e.downcast_ref::<rlua::Error>() {
+            Err(e) => match e.downcast_ref::<mlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),
             },
@@ -113,7 +114,7 @@ mod tests {
             .unwrap();
 
         match plugin.call_request("main", &[]).unwrap() {
-            Err(e) => match e.downcast_ref::<rlua::Error>() {
+            Err(e) => match e.downcast_ref::<mlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),
             },
@@ -147,7 +148,7 @@ mod tests {
             .get(0)
             .unwrap()
         {
-            Err(e) => match e.downcast_ref::<rlua::Error>() {
+            Err(e) => match e.downcast_ref::<mlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),
             },
@@ -183,7 +184,7 @@ mod tests {
         println!("Single: {duration:?}");
 
         if let Err(e) = result.unwrap().get(0).unwrap() {
-            match e.downcast_ref::<rlua::Error>() {
+            match e.downcast_ref::<mlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),
             }
@@ -193,10 +194,46 @@ mod tests {
         println!("Parallel: {duration:?}");
 
         if let Err(e) = result.unwrap().get(0).unwrap() {
-            match e.downcast_ref::<rlua::Error>() {
+            match e.downcast_ref::<mlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),
             }
         }
+    }
+
+    #[test]
+    fn call_plugin_function() {
+        let mut loader = Loader::new();
+        loader.context(move |mut ctx| {
+            ctx.register_manager(LuaPluginManager::new()).unwrap();
+        });
+
+        let paths = [
+            get_plugin_path("plugin_function/circle", "1.0.0", "fpl"),
+            get_plugin_path("plugin_function/square", "1.0.0", "fpl"),
+            get_plugin_path("plugin_function/paint", "1.0.0", "fpl"),
+        ];
+
+        loader
+            .load_plugins(paths.iter().map(|path| path.to_str().unwrap()))
+            .unwrap();
+
+        let plugin = loader
+            .get_plugin("paint", &Version::parse("1.0.0").unwrap())
+            .unwrap();
+		
+		// Circle
+        plugin
+            .call_function("paint", &[true.into()])
+            .unwrap()
+            .unwrap();
+
+		println!();
+
+		// Square
+		plugin
+            .call_function("paint", &[false.into()])
+            .unwrap()
+            .unwrap();
     }
 }

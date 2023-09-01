@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::variable::VariableType;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct Arg {
     pub name: String,
     pub ty: VariableType,

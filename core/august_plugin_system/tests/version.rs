@@ -121,7 +121,7 @@ mod tests {
             .get(0)
             .unwrap()
         {
-            Err(e) => match e.downcast_ref::<rlua::Error>() {
+            Err(e) => match e.downcast_ref::<mlua::Error>() {
                 Some(e) => panic!("[LUA ERROR]: {e:?}"),
                 None => panic!("{:?}: {}", e, e.to_string()),
             },

@@ -38,3 +38,5 @@ function main(N)
 		end
 	end
 end
+
+return {}

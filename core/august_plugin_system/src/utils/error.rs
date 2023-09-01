@@ -5,9 +5,7 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::Depend;
-
-use super::bundle::Bundle;
+use crate::{Bundle, Depend};
 
 #[derive(Error, Debug)]
 pub enum BundleFromError {
@@ -19,10 +17,11 @@ pub enum BundleFromError {
     VersionFailed,
     #[error("Failed to get format")]
     FormatFailed,
-	#[error("Failed to parse version")]
-	ParseVersion(#[from] semver::Error),
+    #[error("Failed to parse version")]
+    ParseVersion(#[from] semver::Error),
 }
 
+#[cfg(feature = "archive")]
 #[derive(Error, Debug)]
 pub enum BundleZipError {
     #[error("Bundle has no name")]
@@ -39,6 +38,7 @@ pub enum BundleZipError {
     ZipFailed(#[from] zip::result::ZipError),
 }
 
+#[cfg(feature = "archive")]
 #[derive(Error, Debug)]
 pub enum BundleUnzipError {
     #[error("Bundle has no name")]
@@ -143,9 +143,29 @@ pub enum RegisterRequestError {
 }
 
 #[derive(Error, Debug)]
-pub enum PluginCallRequest {
+pub enum PluginCallRequestError {
     #[error("Request not found")]
     NotFound,
+}
+
+#[derive(Error, Debug)]
+pub enum PluginRegisterFunctionError {
+    #[error("Function {0} already exists")]
+    AlreadyExists(String),
+}
+
+#[derive(Error, Debug)]
+pub enum PluginCallFunctionError {
+    #[error("Function not found")]
+    NotFound,
+}
+
+#[derive(Error, Debug)]
+pub enum CallFunctionDependError {
+    #[error("Depend not found")]
+    DependNotFound,
+    #[error("Failed to call function")]
+    FailedCallFunction(#[from] PluginCallFunctionError),
 }
 
 pub type ManagerResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;

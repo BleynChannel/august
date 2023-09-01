@@ -4,4 +4,5 @@ mod ptr;
 pub use error::*;
 pub use ptr::*;
 
-pub mod bundle;
+#[cfg(feature = "archive")]
+pub mod archive;

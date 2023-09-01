@@ -1,6 +1,8 @@
 pub mod context;
 pub mod utils;
 
+mod api;
+mod bundle;
 mod info;
 mod loader;
 mod manager;
@@ -11,6 +13,8 @@ pub mod variable;
 
 use std::sync::Arc;
 
+pub use api::*;
+pub use bundle::*;
 pub use context::*;
 pub use info::*;
 pub use loader::*;

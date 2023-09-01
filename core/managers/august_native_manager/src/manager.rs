@@ -2,9 +2,8 @@ use std::env::consts::OS;
 
 use crate::{config::NativeConfig, Plugin};
 use august_plugin_system::{
-    context::LoadPluginContext,
-    utils::{bundle::Bundle, ManagerResult, Ptr},
-    Depend, Loader, Manager, Plugin as StdPlugin, RegisterPluginContext, StdInfo,
+    context::LoadPluginContext, utils::ManagerResult, Api, Bundle, Depend, Manager,
+    Plugin as StdPlugin, RegisterPluginContext, StdInfo,
 };
 use libloading::Library;
 
@@ -27,7 +26,7 @@ impl<'a, O: Send + Sync> Manager<'a, O, StdInfo> for NativePluginManager {
         "npl"
     }
 
-    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, O, StdInfo>>) -> ManagerResult<()> {
+    fn register_manager(&mut self) -> ManagerResult<()> {
         Ok(())
     }
     fn unregister_manager(&mut self) -> ManagerResult<()> {
@@ -60,7 +59,11 @@ impl<'a, O: Send + Sync> Manager<'a, O, StdInfo> for NativePluginManager {
         Ok(())
     }
 
-    fn load_plugin(&mut self, context: LoadPluginContext<'a, '_, O, StdInfo>) -> ManagerResult<()> {
+    fn load_plugin(
+        &mut self,
+        context: LoadPluginContext<'a, '_, O, StdInfo>,
+        _api: Api<O, StdInfo>,
+    ) -> ManagerResult<()> {
         let plugin = context.plugin();
 
         // Загрузка библиотеки

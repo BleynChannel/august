@@ -1,7 +1,6 @@
 use august_plugin_system::{
-    context::LoadPluginContext,
-    utils::{ManagerResult, Ptr},
-    Loader, Manager, Plugin, RegisterPluginContext, StdInfo,
+    context::LoadPluginContext, utils::ManagerResult, Api, Manager, Plugin, RegisterPluginContext,
+    StdInfo,
 };
 
 use crate::utils::config::{load_config, Config};
@@ -15,7 +14,7 @@ impl<'a, O: Send + Sync> Manager<'a, O, StdInfo> for VoidPluginManager {
         "vpl"
     }
 
-    fn register_manager(&mut self, _: Ptr<'a, Loader<'a, O, StdInfo>>) -> ManagerResult<()> {
+    fn register_manager(&mut self) -> ManagerResult<()> {
         println!("VoidPluginManager::register_manager");
         Ok(())
     }
@@ -41,7 +40,11 @@ impl<'a, O: Send + Sync> Manager<'a, O, StdInfo> for VoidPluginManager {
         Ok(())
     }
 
-    fn load_plugin(&mut self, context: LoadPluginContext<'a, '_, O, StdInfo>) -> ManagerResult<()> {
+    fn load_plugin(
+        &mut self,
+        context: LoadPluginContext<'a, '_, O, StdInfo>,
+        _: Api<O, StdInfo>,
+    ) -> ManagerResult<()> {
         println!(
             "VoidPluginManager::load_plugin - {}",
             context.plugin().info().bundle

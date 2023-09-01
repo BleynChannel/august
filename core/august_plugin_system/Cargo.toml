@@ -1,6 +1,6 @@
 [package]
 name = "august_plugin_system"
-version = "0.4.2"
+version = "1.0.0-alpha.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,14 +11,15 @@ rayon = "1.7.0"
 semver = { version = "1.0.18", features = ["serde"] }
 serde = { version = "1.0.160", features = ["derive"] }
 thiserror = "1.0.40"
-walkdir = "2.3.3"
-zip = "0.6.6"
+walkdir = { version = "2.3.3", optional = true }
+zip = { version = "0.6.6", optional = true }
 
 [dev-dependencies]
 semver = { version = "1.0.18", features = ["serde"] }
 toml = "0.7.3"
 codegen = { path = "codegen" }
-rlua = "0.19.7"
+mlua = { version = "0.9.1", features = ["lua54", "vendored", "send"] }
 
 [features]
 derive = ["dep:codegen"]
+archive = ["dep:walkdir", "dep:zip"]

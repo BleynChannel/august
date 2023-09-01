@@ -8,11 +8,14 @@ use std::{
 use august_plugin_system::{
     context::LoadPluginContext,
     function::{Arg, DynamicFunction, FunctionOutput},
-    utils::{bundle::Bundle, ManagerResult},
-    variable::Variable,
-    Manager, Plugin, Registry, Requests, StdInfo,
+    utils::ManagerResult,
+    variable::{Variable, VariableType},
+    Api, Bundle, Manager, Plugin, Registry, Requests, StdInfo,
 };
-use rlua::{Context, Lua, MultiValue, ToLua, Value};
+use mlua::{Function, IntoLua, Lua, MultiValue, Table, Value};
+use semver::Version;
+
+use crate::utils::load_config;
 
 pub struct LuaPluginManager {
     lua_refs: HashMap<Bundle, Arc<Mutex<Lua>>>,
@@ -26,29 +29,30 @@ impl<'a> Manager<'a, FunctionOutput, StdInfo> for LuaPluginManager {
     fn load_plugin(
         &mut self,
         mut context: LoadPluginContext<'a, '_, FunctionOutput, StdInfo>,
+        api: Api<FunctionOutput, StdInfo>,
     ) -> ManagerResult<()> {
-        let bundle = &context.plugin().info().bundle;
+        let bundle = context.plugin().info().bundle.clone();
 
         println!("FunctionPluginManager::load_plugin - {}", bundle);
 
-        self.lua_refs
-            .insert(bundle.clone(), Arc::new(Mutex::new(Lua::new())));
-        let lua = self.lua_refs.values().last().unwrap();
+        let lua = Arc::new(Mutex::new(Lua::new()));
+        let api = Arc::new(api);
 
-        lua.lock()
-            .unwrap()
-            .context(|lua_context| -> ManagerResult<_> {
-                self.registry_to_lua(lua_context, context.registry())?;
-                self.load_src(lua_context, context.plugin().info().path.clone())?;
+        {
+            let lua = &*lua.lock().unwrap();
 
-                let requests = self.register_requests(lua, lua_context, context.requests())?;
-                for request in requests {
-                    context.register_request(request)?;
-                }
+            self.registry_to_lua(lua, api.registry())?;
+            self.register_api(lua, &api)?;
+        }
 
-                Ok(())
-            })?;
+        self.load_src(&lua, api, context.plugin().info().path.clone())?;
 
+        let requests = self.register_requests(&lua, context.requests())?;
+        for request in requests {
+            context.register_request(request)?;
+        }
+
+        self.lua_refs.insert(bundle, lua);
         Ok(())
     }
 
@@ -75,12 +79,14 @@ impl<'a> Manager<'a, FunctionOutput, StdInfo> for LuaPluginManager {
         &mut self,
         context: august_plugin_system::RegisterPluginContext,
     ) -> ManagerResult<StdInfo> {
+        let (_, info) = load_config(context.path)?;
+
         println!(
             "FunctionPluginManager::register_plugin - {}",
             context.bundle
         );
 
-        Ok(Default::default())
+        Ok(info)
     }
 }
 
@@ -93,17 +99,13 @@ impl LuaPluginManager {
     }
 
     // Добавление функций из реестра
-    fn registry_to_lua<'a>(
-        &self,
-        lua_context: Context,
-        registry: &Registry<FunctionOutput>,
-    ) -> ManagerResult<()> {
-        let globals = lua_context.globals();
+    fn registry_to_lua(&self, lua: &Lua, registry: &Registry<FunctionOutput>) -> ManagerResult<()> {
+        let globals = lua.globals();
 
         for function in registry.iter() {
             let function_name = function.name();
             let function = function.clone();
-            let f = lua_context.create_function(move |ctx, lua_args: MultiValue| {
+            let f = lua.create_function(move |ctx, lua_args: MultiValue| {
                 let mut args = vec![];
                 for arg in lua_args.iter().map(Self::lua2august) {
                     args.push(arg?);
@@ -111,7 +113,7 @@ impl LuaPluginManager {
 
                 let output = function
                     .call(&args)
-                    .map_err(|e| rlua::Error::RuntimeError(e.to_string()))?
+                    .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?
                     .map(|var| Self::august2lua(&var, ctx.clone()));
 
                 match output {
@@ -127,9 +129,57 @@ impl LuaPluginManager {
     }
 
     // Загрузка исходного кода плагина
-    fn load_src(&self, lua_context: Context, path: PathBuf) -> ManagerResult<()> {
+    fn load_src(
+        &self,
+        lua: &Arc<Mutex<Lua>>,
+        api: Arc<Api<FunctionOutput, StdInfo>>,
+        path: PathBuf,
+    ) -> ManagerResult<()> {
+        let arc_lua = lua.lock().unwrap();
+
         let src = std::fs::read_to_string(path.join("main.lua"))?;
-        lua_context.load(&src).exec()?;
+        let result: Vec<Table> = arc_lua.load(&src).eval()?;
+
+        let plugin = api.get_plugin_mut_by_bundle(api.plugin()).unwrap();
+        let global = arc_lua.globals();
+
+        for info in result.into_iter() {
+            let name: String = info.get("name")?;
+            let inputs: Vec<String> = info.get::<_, Vec<String>>("inputs")?;
+            let function = info.get::<_, Function>("func")?;
+
+            global.set(format!("__{}__", name), function)?;
+
+            let lua = lua.clone();
+            let function = DynamicFunction::new(
+                name.clone(),
+                inputs
+                    .iter()
+                    .map(|name| Arg::new(name, VariableType::Let))
+                    .collect(),
+                Some(Arg::new("output", VariableType::Let)),
+                move |args| {
+                    let arc_lua = lua.lock().unwrap();
+                    let lua = &*arc_lua;
+
+                    let mut lua_args = vec![];
+                    for arg in args {
+                        lua_args.push(Self::august2lua(arg, lua)?);
+                    }
+
+                    let f: mlua::Function = arc_lua.globals().get(format!("__{}__", name))?;
+
+                    let result = match f.call::<_, Value>(MultiValue::from_vec(lua_args))? {
+                        Value::Nil => Ok(None),
+                        value => Ok(Some(Self::lua2august(&value)?)),
+                    };
+                    result
+                },
+            );
+
+            plugin.register_function(function)?;
+        }
+
         Ok(())
     }
 
@@ -137,10 +187,11 @@ impl LuaPluginManager {
     fn register_requests(
         &self,
         lua: &Arc<Mutex<Lua>>,
-        lua_context: Context,
         requests: &Requests,
     ) -> ManagerResult<Vec<DynamicFunction>> {
-        let globals = lua_context.globals();
+        let arc_lua = lua.lock().unwrap();
+
+        let globals = arc_lua.globals();
         let mut result = vec![];
 
         for request in requests.iter() {
@@ -166,22 +217,21 @@ impl LuaPluginManager {
                         move |args| {
                             let request_name = request_name.clone();
 
-                            Ok(lua
-                                .lock()
-                                .unwrap()
-                                .context(move |ctx| -> ManagerResult<_> {
-                                    let mut lua_args = vec![];
-                                    for arg in args {
-                                        lua_args.push(Self::august2lua(arg, ctx)?);
-                                    }
+                            let arc_lua = lua.lock().unwrap();
+                            let lua = &*arc_lua;
 
-                                    let f: rlua::Function = ctx.globals().get(request_name)?;
+                            let mut lua_args = vec![];
+                            for arg in args {
+                                lua_args.push(Self::august2lua(arg, lua)?);
+                            }
 
-                                    match f.call::<_, Value>(MultiValue::from_vec(lua_args))? {
-                                        Value::Nil => Ok(None),
-                                        value => Ok(Some(Self::lua2august(&value)?)),
-                                    }
-                                })?)
+                            let f: mlua::Function = arc_lua.globals().get(request_name)?;
+
+                            let result = match f.call::<_, Value>(MultiValue::from_vec(lua_args))? {
+                                Value::Nil => Ok(None),
+                                value => Ok(Some(Self::lua2august(&value)?)),
+                            };
+                            result
                         },
                     );
 
@@ -197,11 +247,87 @@ impl LuaPluginManager {
         Ok(result)
     }
 
-    fn lua2august(arg: &Value) -> rlua::Result<Variable> {
+    // Регистрация API
+    fn register_api<'a>(
+        &self,
+        lua: &Lua,
+        api: &Arc<Api<FunctionOutput, StdInfo>>,
+    ) -> ManagerResult<()> {
+        let globals = lua.globals();
+
+        {
+            let api = api.clone();
+
+            let f = lua.create_function(
+                move |ctx, (id, version, name, args): (String, String, String, MultiValue)| {
+                    let version = Version::parse(&version)
+                        .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?;
+
+                    let args = args
+                        .iter()
+                        .map(Self::lua2august)
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let output = api
+                        .call_function_depend(&id, &version, &name, args.as_slice())
+                        .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?
+                        .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?
+                        .map(|var| Self::august2lua(&var, ctx.clone()));
+
+                    match output {
+                        Some(out) => Ok(out?),
+                        None => Ok(Value::Nil),
+                    }
+                },
+            )?;
+
+            globals.set("call_function_depend", f)?;
+        }
+
+        {
+            let api = api.clone();
+
+            let f = lua.create_function(
+                move |ctx, (id, version, name, args): (String, String, String, MultiValue)| {
+                    let version = Version::parse(&version)
+                        .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?;
+
+                    let args = args
+                        .iter()
+                        .map(Self::lua2august)
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let output = api
+                        .call_function_optional_depend(&id, &version, &name, args.as_slice())
+                        .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?;
+
+                    match output {
+                        Some(out) => Ok({
+                            let output = out
+                                .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?
+                                .map(|var| Self::august2lua(&var, ctx.clone()));
+
+                            match output {
+                                Some(out) => (true, out?),
+                                None => (true, Value::Nil),
+                            }
+                        }),
+                        None => Ok((false, Value::Nil)),
+                    }
+                },
+            )?;
+
+            globals.set("call_function_optional_depend", f)?;
+        }
+
+        Ok(())
+    }
+
+    fn lua2august(arg: &Value) -> mlua::Result<Variable> {
         match arg {
             Value::Nil => Ok(Variable::Null),
             Value::Boolean(var) => Ok(Variable::Bool(*var)),
-            Value::LightUserData(_) => Err(rlua::Error::RuntimeError(
+            Value::LightUserData(_) => Err(mlua::Error::RuntimeError(
                 "Неподдерживаемый тип переменной".to_string(),
             )),
             Value::Integer(var) => Ok(Variable::I32(*var as i32)),
@@ -214,42 +340,40 @@ impl LuaPluginManager {
                 }
                 Ok(Variable::List(list))
             }
-            Value::Function(_) => Err(rlua::Error::RuntimeError(
+            Value::Function(_) => Err(mlua::Error::RuntimeError(
                 "Неподдерживаемый тип переменной".to_string(),
             )),
-            Value::Thread(_) => Err(rlua::Error::RuntimeError(
+            Value::Thread(_) => Err(mlua::Error::RuntimeError(
                 "Неподдерживаемый тип переменной".to_string(),
             )),
-            Value::UserData(_) => Err(rlua::Error::RuntimeError(
+            Value::UserData(_) => Err(mlua::Error::RuntimeError(
                 "Неподдерживаемый тип переменной".to_string(),
             )),
             Value::Error(err) => Err(err.clone()),
         }
     }
 
-    fn august2lua<'lua>(var: &Variable, context: Context<'lua>) -> rlua::Result<Value<'lua>> {
+    fn august2lua<'lua>(var: &Variable, lua: &'lua Lua) -> mlua::Result<Value<'lua>> {
         match var {
             Variable::Null => Ok(Value::Nil),
-            Variable::I8(var) => var.to_lua(context),
-            Variable::I16(var) => var.to_lua(context),
-            Variable::I32(var) => var.to_lua(context),
-            Variable::I64(var) => var.to_lua(context),
-            Variable::U8(var) => var.to_lua(context),
-            Variable::U16(var) => var.to_lua(context),
-            Variable::U32(var) => var.to_lua(context),
-            Variable::U64(var) => var.to_lua(context),
-            Variable::F32(var) => var.to_lua(context),
-            Variable::F64(var) => var.to_lua(context),
-            Variable::Bool(var) => var.to_lua(context),
-            Variable::Char(var) => var.to_string().to_lua(context),
-            Variable::String(var) => var.clone().to_lua(context),
-            Variable::List(var) => {
-                let mut list = vec![];
-                for v in var {
-                    list.push(Self::august2lua(v, context)?);
-                }
-                list.to_lua(context)
-            }
+            Variable::I8(var) => var.into_lua(lua),
+            Variable::I16(var) => var.into_lua(lua),
+            Variable::I32(var) => var.into_lua(lua),
+            Variable::I64(var) => var.into_lua(lua),
+            Variable::U8(var) => var.into_lua(lua),
+            Variable::U16(var) => var.into_lua(lua),
+            Variable::U32(var) => var.into_lua(lua),
+            Variable::U64(var) => var.into_lua(lua),
+            Variable::F32(var) => var.into_lua(lua),
+            Variable::F64(var) => var.into_lua(lua),
+            Variable::Bool(var) => var.into_lua(lua),
+            Variable::Char(var) => var.to_string().into_lua(lua),
+            Variable::String(var) => var.clone().into_lua(lua),
+            Variable::List(var) => var
+                .iter()
+                .map(|v| Self::august2lua(v, lua))
+                .collect::<mlua::Result<Vec<_>>>()?
+                .into_lua(lua),
         }
     }
 }

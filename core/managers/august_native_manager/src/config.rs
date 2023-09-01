@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs, path::PathBuf};
 
 use august_plugin_system::utils::ManagerResult;
-use semver::Version;
+use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 
 use crate::error::RegisterPluginError;
@@ -12,8 +12,8 @@ pub struct NativeConfig {
     pub description: String,
     pub author: String,
     pub license: Option<String>,
-    pub depends: Option<HashMap<String, Version>>,
-    pub optional_depends: Option<HashMap<String, Version>>,
+    pub depends: Option<HashMap<String, VersionReq>>,
+    pub optional_depends: Option<HashMap<String, VersionReq>>,
 }
 
 impl NativeConfig {
